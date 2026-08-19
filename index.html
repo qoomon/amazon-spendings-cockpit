@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amazon Spending Visualizer</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            amazon: {
+              DEFAULT: '#FF9900',
+              dark: '#146EB4',
+              navy: '#131921',
+              light: '#232F3E'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- PapaParse CDN for robust CSV parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+    }
+    .dark .glass-card {
+      background: rgba(26, 32, 44, 0.95);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 min-h-screen transition-colors duration-200">
+
+  <!-- Navbar -->
+  <header class="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 shadow-md shadow-amber-500/20 font-black text-xl">
+          a
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight flex items-center gap-2">
+            Amazon Spendings <span class="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-semibold px-2 py-0.5 rounded-full">Analytics</span>
+          </h1>
+          <p class="text-xs text-slate-500 dark:text-slate-400">100% Client-Side & Private</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <button id="themeToggle" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 dark:text-slate-400 transition" title="Toggle Theme">
+          <i data-lucide="moon" class="w-5 h-5 hidden dark:block"></i>
+          <i data-lucide="sun" class="w-5 h-5 block dark:hidden"></i>
+        </button>
+        <button id="loadSampleBtn" class="text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded-lg transition flex items-center gap-1.5">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-500"></i>
+          Try Sample Data
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    
+    <!-- Upload Section -->
+    <section id="uploadSection" class="relative">
+      <div id="dropzone" class="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-amber-500 dark:hover:border-amber-400 rounded-2xl p-8 sm:p-12 text-center bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition cursor-pointer group">
+        <input type="file" id="csvFileInput" accept=".csv,text/csv" class="hidden">
+        <div class="flex flex-col items-center justify-center space-y-4">
+          <div class="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center text-amber-600 dark:text-amber-400 group-hover:scale-110 transition duration-300">
+            <i data-lucide="upload-cloud" class="w-8 h-8"></i>
+          </div>
+          <div>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white">Upload Amazon Order History CSV</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+              Drag & drop your exported Amazon report file here, or <span class="text-amber-600 dark:text-amber-400 font-semibold underline">browse files</span>.
+            </p>
+          </div>
+          <div class="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-500"></i>
+            Your CSV is parsed entirely in your browser — zero data leaves your device.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dashboard Content (Initially Hidden until data parsed) -->
+    <div id="dashboard" class="hidden space-y-8">
+      
+      <!-- Controls & Filter Bar -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+            <i data-lucide="filter" class="w-4 h-4 text-amber-500"></i>
+            <span class="font-semibold text-slate-700 dark:text-slate-300">Year Filter:</span>
+          </div>
+          <select id="yearFilter" class="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500">
+            <option value="ALL">All Years</option>
+          </select>
+        </div>
+
+        <div class="flex items-center gap-2 text-xs text-slate-500">
+          <span id="loadedRecordsCount" class="font-medium bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md text-slate-700 dark:text-slate-300">0 orders loaded</span>
+          <button id="resetUploadBtn" class="text-rose-600 dark:text-rose-400 hover:underline px-2 py-1">Upload another CSV</button>
+        </div>
+      </div>
+
+      <!-- KPI Summary Cards -->
+      <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Total Spend -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
+          <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+            <span class="text-xs font-semibold uppercase tracking-wider">Total Spent</span>
+            <div class="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+              <i data-lucide="dollar-sign" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div id="kpiTotalSpend" class="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">$0.00</div>
+          <div id="kpiSpendSubtitle" class="text-xs text-slate-400 mt-1">Across all filtered orders</div>
+        </div>
+
+        <!-- Total Orders -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
+          <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+            <span class="text-xs font-semibold uppercase tracking-wider">Total Orders</span>
+            <div class="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <i data-lucide="shopping-bag" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div id="kpiTotalOrders" class="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">0</div>
+          <div id="kpiOrdersSubtitle" class="text-xs text-slate-400 mt-1">Items & shipments</div>
+        </div>
+
+        <!-- Average Order Value -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
+          <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+            <span class="text-xs font-semibold uppercase tracking-wider">Avg Order Value</span>
+            <div class="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+              <i data-lucide="bar-chart-2" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div id="kpiAvgOrder" class="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">$0.00</div>
+          <div class="text-xs text-slate-400 mt-1">Mean cost per transaction</div>
+        </div>
+
+        <!-- Highest Single Item -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
+          <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+            <span class="text-xs font-semibold uppercase tracking-wider">Max Single Item</span>
+            <div class="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+              <i data-lucide="crown" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div id="kpiMaxItem" class="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">$0.00</div>
+          <div id="kpiMaxItemTitle" class="text-xs text-slate-400 mt-1 truncate" title="">None</div>
+        </div>
+      </section>
+
+      <!-- Main Visual Charts Grid -->
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Monthly Spending Timeline -->
+        <div class="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-base font-bold text-slate-900 dark:text-white">Spending Over Time</h3>
+              <p class="text-xs text-slate-400">Monthly spend breakdown ($)</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="chartTypeBar" class="p-1.5 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-medium">Bar</button>
+              <button id="chartTypeLine" class="p-1.5 rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-medium">Line</button>
+            </div>
+          </div>
+          <div class="relative h-72 sm:h-80 w-full">
+            <canvas id="timelineChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Category / Tag Breakdown -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
+          <div class="mb-4">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Spend by Category</h3>
+            <p class="text-xs text-slate-400">Distribution across major product types</p>
+          </div>
+          <div class="relative h-72 sm:h-80 w-full flex items-center justify-center">
+            <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Secondary Visuals: Day of Week & Top 5 Items -->
+      <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Spend by Day of Week -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm">
+          <div class="mb-4">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Spending by Day of Week</h3>
+            <p class="text-xs text-slate-400">Which days you shop the most</p>
+          </div>
+          <div class="relative h-64 w-full">
+            <canvas id="dayOfWeekChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Top Most Expensive Purchases -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
+          <div class="mb-4">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Top 5 Most Expensive Items</h3>
+            <p class="text-xs text-slate-400">Single highest value items ordered</p>
+          </div>
+          <div id="topItemsList" class="space-y-3">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Searchable / Filterable Orders Table -->
+      <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+        <div class="p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Order Details</h3>
+            <p class="text-xs text-slate-400">Inspect item details and values</p>
+          </div>
+          <div class="relative w-full sm:w-72">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <input type="text" id="tableSearchInput" placeholder="Search orders, items, categories..." class="w-full pl-9 pr-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-800 dark:text-slate-200">
+          </div>
+        </div>
+        <div class="overflow-x-auto max-h-96">
+          <table class="w-full text-left border-collapse text-sm">
+            <thead class="sticky top-0 bg-slate-50 dark:bg-slate-800/90 backdrop-blur text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
+              <tr>
+                <th class="py-3 px-4">Date</th>
+                <th class="py-3 px-4">Title / Item</th>
+                <th class="py-3 px-4">Category</th>
+                <th class="py-3 px-4 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody id="ordersTableBody" class="divide-y divide-slate-100 dark:divide-slate-800/60 font-normal text-slate-700 dark:text-slate-300">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+        <div class="p-3 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-400 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
+          <span id="tableResultsCount">Showing 0 orders</span>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <script>
+    // Lucide icon initialization
+    lucide.createIcons();
+
+    // State
+    let rawOrders = [];
+    let filteredOrders = [];
+    let timelineChartInstance = null;
+    let categoryChartInstance = null;
+    let dayOfWeekChartInstance = null;
+    let currentTimelineType = 'bar';
+
+    // Theme Toggle
+    const themeToggle = document.getElementById('themeToggle');
+    if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    themeToggle.addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+      updateCharts(); // redraw charts to match dark mode styles
+    });
+
+    // File Upload & Drag-Drop Handling
+    const dropzone = document.getElementById('dropzone');
+    const csvFileInput = document.getElementById('csvFileInput');
+    const loadSampleBtn = document.getElementById('loadSampleBtn');
+    const resetUploadBtn = document.getElementById('resetUploadBtn');
+
+    dropzone.addEventListener('click', () => csvFileInput.click());
+
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('border-amber-500', 'bg-amber-50/20');
+    });
+
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.classList.remove('border-amber-500', 'bg-amber-50/20');
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('border-amber-500', 'bg-amber-50/20');
+      if (e.dataTransfer.files.length > 0) {
+        parseCSVFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    csvFileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        parseCSVFile(e.target.files[0]);
+      }
+    });
+
+    resetUploadBtn.addEventListener('click', () => {
+      document.getElementById('dashboard').classList.add('hidden');
+      document.getElementById('uploadSection').classList.remove('hidden');
+      csvFileInput.value = '';
+    });
+
+    // Sample Data Generation
+    loadSampleBtn.addEventListener('click', () => {
+      loadSampleData();
+    });
+
+    function cleanCurrency(val) {
+      if (!val) return 0;
+      if (typeof val === 'number') return val;
+      // Remove currency symbols, commas, spaces
+      const cleaned = val.toString().replace(/[^0-9.-]+/g, '');
+      const parsed = parseFloat(cleaned);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+
+    function parseDate(dateStr) {
+      if (!dateStr) return null;
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) return d;
+
+      // Handle common Amazon formats like MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD
+      const parts = dateStr.split(/[-/]/);
+      if (parts.length === 3) {
+        if (parts[0].length === 4) { // YYYY-MM-DD
+          return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        } else if (parts[2].length === 4) { // MM/DD/YYYY
+          return new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
+        }
+      }
+      return null;
+    }
+
+    function inferCategory(title) {
+      if (!title) return 'Other';
+      const t = title.toLowerCase();
+      if (t.match(/cable|charger|usb|adapter|phone|laptop|mouse|keyboard|monitor|ssd|drive|headphone|earbud|airpods|battery|anker|apple|samsung|electronics/)) return 'Electronics & Tech';
+      if (t.match(/book|paperback|hardcover|kindle|novel|edition|guide|manual/)) return 'Books & Media';
+      if (t.match(/shirt|pant|shoe|sock|jacket|hat|dress|hoodie|clothing|sneaker|jean|apparel/)) return 'Clothing & Apparel';
+      if (t.match(/coffee|tea|snack|protein|vitamin|supplement|food|organic|drink|chocolate/)) return 'Grocery & Health';
+      if (t.match(/kitchen|pan|pot|blender|towel|cleaner|detergent|pillow|sheet|home|chair|desk|lamp/)) return 'Home & Kitchen';
+      if (t.match(/shampoo|soap|lotion|cream|toothbrush|paste|razor|grooming|beauty|cosmetic/)) return 'Beauty & Personal Care';
+      if (t.match(/game|toy|puzzle|lego|nintendo|playstation|xbox/)) return 'Toys & Gaming';
+      return 'General Goods';
+    }
+
+    function normalizeRow(row) {
+      // Find date field
+      const dateKeys = ['Order Date', 'order date', 'Order Date (YYYY-MM-DD)', 'Date', 'date', 'Shipment Date'];
+      let dateVal = null;
+      for (const k of dateKeys) {
+        if (row[k]) {
+          dateVal = parseDate(row[k]);
+          if (dateVal) break;
+        }
+      }
+
+      // Find amount field
+      const amountKeys = ['Total Charged', 'Total Amount', 'Item Total', 'Purchase Price Per Unit', 'Item Subtotal', 'total', 'Amount', 'Item Price'];
+      let amountVal = 0;
+      for (const k of amountKeys) {
+        if (row[k] !== undefined && row[k] !== '') {
+          const c = cleanCurrency(row[k]);
+          if (c > 0) {
+            amountVal = c;
+            break;
+          }
+        }
+      }
+
+      // Find title field
+      const titleKeys = ['Title', 'Product Name', 'Item Description', 'Item Name', 'Product description', 'Description', 'Item Subtotal Tax'];
+      let titleVal = 'Amazon Item';
+      for (const k of titleKeys) {
+        if (row[k] && row[k].trim().length > 0) {
+          titleVal = row[k].trim();
+          break;
+        }
+      }
+
+      // Find category field or infer
+      const categoryKeys = ['Category', 'Product Category', 'UNSPSC Code'];
+      let categoryVal = null;
+      for (const k of categoryKeys) {
+        if (row[k] && row[k].trim().length > 0) {
+          categoryVal = row[k].trim();
+          break;
+        }
+      }
+      if (!categoryVal) {
+        categoryVal = inferCategory(titleVal);
+      }
+
+      return {
+        date: dateVal,
+        amount: amountVal,
+        title: titleVal,
+        category: categoryVal
+      };
+    }
+
+    function parseCSVFile(file) {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: false,
+        complete: function(results) {
+          processParsedData(results.data);
+        },
+        error: function(err) {
+          alert('Failed to parse CSV file: ' + err.message);
+        }
+      });
+    }
+
+    function loadSampleData() {
+      const sampleRows = [
+        {"Order Date": "2024-01-12", "Title": "Sony WH-1000XM5 Wireless Noise Canceling Headphones", "Total Charged": "$348.00", "Category": "Electronics & Tech"},
+        {"Order Date": "2024-01-20", "Title": "Nespresso VertuoPlus Coffee and Espresso Machine", "Total Charged": "$159.95", "Category": "Home & Kitchen"},
+        {"Order Date": "2024-02-05", "Title": "Atomic Habits by James Clear", "Total Charged": "$14.99", "Category": "Books & Media"},
+        {"Order Date": "2024-02-14", "Title": "Anker USB C Charger 65W Fast Charger", "Total Charged": "$39.99", "Category": "Electronics & Tech"},
+        {"Order Date": "2024-02-28", "Title": "Organic Whole Bean Coffee 2lb", "Total Charged": "$24.50", "Category": "Grocery & Health"},
+        {"Order Date": "2024-03-08", "Title": "Ergonomic Office Mesh Chair", "Total Charged": "$219.00", "Category": "Home & Kitchen"},
+        {"Order Date": "2024-03-15", "Title": "Running Shoes Men Lightweight Breathable", "Total Charged": "$85.00", "Category": "Clothing & Apparel"},
+        {"Order Date": "2024-04-02", "Title": "Apple MagSafe Battery Pack", "Total Charged": "$99.00", "Category": "Electronics & Tech"},
+        {"Order Date": "2024-04-22", "Title": "Hydro Flask 32 oz Wide Mouth Water Bottle", "Total Charged": "$44.95", "Category": "Home & Kitchen"},
+        {"Order Date": "2024-05-10", "Title": "LG 27-inch 4K UHD UltraFine Monitor", "Total Charged": "$396.99", "Category": "Electronics & Tech"},
+        {"Order Date": "2024-05-18", "Title": "Stainless Steel Kitchen Knife Set 8-Piece", "Total Charged": "$69.99", "Category": "Home & Kitchen"},
+        {"Order Date": "2024-06-01", "Title": "Designing Data-Intensive Applications", "Total Charged": "$45.50", "Category": "Books & Media"},
+        {"Order Date": "2024-06-15", "Title": "Electric Toothbrush with 4 Brush Heads", "Total Charged": "$59.99", "Category": "Beauty & Personal Care"},
+        {"Order Date": "2024-07-04", "Title": "Kindle Paperwhite (16 GB)", "Total Charged": "$149.99", "Category": "Electronics & Tech"},
+        {"Order Date": "2024-07-20", "Title": "Whey Protein Isolate Vanilla 5lb", "Total Charged": "$74.99", "Category": "Grocery & Health"},
+        {"Order Date": "2023-11-24", "Title": "Apple MacBook Air M2 13-inch", "Total Charged": "$999.00", "Category": "Electronics & Tech"},
+        {"Order Date": "2023-12-05", "Title": "LEGO Star Wars Millennium Falcon", "Total Charged": "$169.99", "Category": "Toys & Gaming"},
+        {"Order Date": "2023-12-18", "Title": "Merino Wool Winter Beanie & Scarf Set", "Total Charged": "$48.00", "Category": "Clothing & Apparel"}
+      ];
+      processParsedData(sampleRows);
+    }
+
+    function processParsedData(rows) {
+      if (!rows || rows.length === 0) {
+        alert('The uploaded file appears to be empty.');
+        return;
+      }
+
+      rawOrders = rows
+        .map(normalizeRow)
+        .filter(order => order.date !== null && order.amount > 0)
+        .sort((a, b) => b.date - a.date);
+
+      if (rawOrders.length === 0) {
+        alert('Could not find valid dates and amounts in this CSV. Please check that it is an Amazon Order History report.');
+        return;
+      }
+
+      populateYearFilter();
+      applyFilters();
+
+      document.getElementById('uploadSection').classList.add('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function populateYearFilter() {
+      const yearFilter = document.getElementById('yearFilter');
+      const years = Array.from(new Set(rawOrders.map(o => o.date.getFullYear()))).sort((a, b) => b - a);
+      
+      yearFilter.innerHTML = '<option value="ALL">All Years</option>';
+      years.forEach(yr => {
+        const opt = document.createElement('option');
+        opt.value = yr;
+        opt.textContent = yr;
+        yearFilter.appendChild(opt);
+      });
+    }
+
+    document.getElementById('yearFilter').addEventListener('change', () => {
+      applyFilters();
+    });
+
+    document.getElementById('tableSearchInput').addEventListener('input', () => {
+      renderTable();
+    });
+
+    document.getElementById('chartTypeBar').addEventListener('click', () => {
+      currentTimelineType = 'bar';
+      updateChartButtons();
+      renderTimelineChart();
+    });
+
+    document.getElementById('chartTypeLine').addEventListener('click', () => {
+      currentTimelineType = 'line';
+      updateChartButtons();
+      renderTimelineChart();
+    });
+
+    function updateChartButtons() {
+      const barBtn = document.getElementById('chartTypeBar');
+      const lineBtn = document.getElementById('chartTypeLine');
+      if (currentTimelineType === 'bar') {
+        barBtn.className = "p-1.5 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-semibold";
+        lineBtn.className = "p-1.5 rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-medium";
+      } else {
+        lineBtn.className = "p-1.5 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-semibold";
+        barBtn.className = "p-1.5 rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-medium";
+      }
+    }
+
+    function applyFilters() {
+      const selectedYear = document.getElementById('yearFilter').value;
+      if (selectedYear === 'ALL') {
+        filteredOrders = [...rawOrders];
+      } else {
+        const yr = parseInt(selectedYear);
+        filteredOrders = rawOrders.filter(o => o.date.getFullYear() === yr);
+      }
+
+      document.getElementById('loadedRecordsCount').textContent = `${filteredOrders.length} order${filteredOrders.length === 1 ? '' : 's'} shown`;
+      updateKPIs();
+      updateCharts();
+      renderTopItems();
+      renderTable();
+    }
+
+    function formatMoney(amount) {
+      return '$' + amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function updateKPIs() {
+      const totalSpend = filteredOrders.reduce((sum, o) => sum + o.amount, 0);
+      const totalCount = filteredOrders.length;
+      const avgOrder = totalCount > 0 ? (totalSpend / totalCount) : 0;
+      
+      let maxItem = { amount: 0, title: 'None' };
+      filteredOrders.forEach(o => {
+        if (o.amount > maxItem.amount) {
+          maxItem = o;
+        }
+      });
+
+      document.getElementById('kpiTotalSpend').textContent = formatMoney(totalSpend);
+      document.getElementById('kpiTotalOrders').textContent = totalCount.toLocaleString();
+      document.getElementById('kpiAvgOrder').textContent = formatMoney(avgOrder);
+      document.getElementById('kpiMaxItem').textContent = formatMoney(maxItem.amount);
+      document.getElementById('kpiMaxItemTitle').textContent = maxItem.title;
+      document.getElementById('kpiMaxItemTitle').title = maxItem.title;
+    }
+
+    function getChartThemeColors() {
+      const isDark = document.documentElement.classList.contains('dark');
+      return {
+        textColor: isDark ? '#94a3b8' : '#64748b',
+        gridColor: isDark ? 'rgba(51, 65, 85, 0.4)' : 'rgba(226, 232, 240, 0.8)',
+        amberMain: '#f59e0b',
+        amberLight: isDark ? 'rgba(245, 158, 11, 0.2)' : 'rgba(245, 158, 11, 0.15)',
+        trendLine: isDark ? '#f87171' : '#ef4444'
+      };
+    }
+
+    function calculateTrendLine(data) {
+      const n = data.length;
+      if (n === 0) return [];
+      if (n === 1) return [data[0]];
+
+      let sumX = 0;
+      let sumY = 0;
+      let sumXY = 0;
+      let sumXX = 0;
+
+      for (let i = 0; i < n; i++) {
+        sumX += i;
+        sumY += data[i];
+        sumXY += i * data[i];
+        sumXX += i * i;
+      }
+
+      const denominator = n * sumXX - sumX * sumX;
+      if (denominator === 0) {
+        return data.map(() => sumY / n);
+      }
+
+      const slope = (n * sumXY - sumX * sumY) / denominator;
+      const intercept = (sumY - slope * sumX) / n;
+
+      return data.map((_, i) => Math.max(0, +(slope * i + intercept).toFixed(2)));
+    }
+
+    function updateCharts() {
+      renderTimelineChart();
+      renderCategoryChart();
+      renderDayOfWeekChart();
+    }
+
+    function renderTimelineChart() {
+      const ctx = document.getElementById('timelineChart').getContext('2d');
+      const theme = getChartThemeColors();
+
+      // Aggregate by Year-Month
+      const monthMap = {};
+      // Sort chronological
+      const chronological = [...filteredOrders].sort((a, b) => a.date - b.date);
+
+      chronological.forEach(o => {
+        const key = `${o.date.getFullYear()}-${String(o.date.getMonth() + 1).padStart(2, '0')}`;
+        monthMap[key] = (monthMap[key] || 0) + o.amount;
+      });
+
+      const labels = Object.keys(monthMap).map(k => {
+        const [y, m] = k.split('-');
+        const d = new Date(parseInt(y), parseInt(m) - 1, 1);
+        return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      });
+      const dataValues = Object.values(monthMap);
+      const trendValues = calculateTrendLine(dataValues);
+
+      if (timelineChartInstance) {
+        timelineChartInstance.destroy();
+      }
+
+      timelineChartInstance = new Chart(ctx, {
+        type: currentTimelineType,
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Monthly Spending',
+              data: dataValues,
+              backgroundColor: currentTimelineType === 'bar' ? theme.amberMain : theme.amberLight,
+              borderColor: theme.amberMain,
+              borderWidth: 2,
+              borderRadius: currentTimelineType === 'bar' ? 6 : 0,
+              fill: currentTimelineType === 'line',
+              tension: 0.35,
+              pointBackgroundColor: theme.amberMain,
+              pointRadius: currentTimelineType === 'line' ? 4 : 0,
+              order: 2
+            },
+            {
+              type: 'line',
+              label: 'Trend Line',
+              data: trendValues,
+              borderColor: theme.trendLine,
+              borderWidth: 2,
+              borderDash: [6, 6],
+              pointRadius: 0,
+              pointHoverRadius: 4,
+              fill: false,
+              tension: 0,
+              order: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top',
+              align: 'end',
+              labels: {
+                color: theme.textColor,
+                boxWidth: 12,
+                font: { size: 11 }
+              }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return ` ${context.dataset.label}: ` + formatMoney(context.parsed.y);
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: theme.gridColor },
+              ticks: { color: theme.textColor, font: { size: 11 } }
+            },
+            y: {
+              grid: { color: theme.gridColor },
+              ticks: {
+                color: theme.textColor,
+                font: { size: 11 },
+                callback: value => '$' + value.toLocaleString()
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function renderCategoryChart() {
+      const ctx = document.getElementById('categoryChart').getContext('2d');
+      const theme = getChartThemeColors();
+
+      const catMap = {};
+      filteredOrders.forEach(o => {
+        catMap[o.category] = (catMap[o.category] || 0) + o.amount;
+      });
+
+      const sortedCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+      const labels = sortedCats.map(c => c[0]);
+      const dataValues = sortedCats.map(c => c[1]);
+
+      const colors = [
+        '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#64748b'
+      ];
+
+      if (categoryChartInstance) {
+        categoryChartInstance.destroy();
+      }
+
+      categoryChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: dataValues,
+            backgroundColor: colors.slice(0, labels.length),
+            borderWidth: 2,
+            borderColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#ffffff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                color: theme.textColor,
+                boxWidth: 12,
+                font: { size: 11 }
+              }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const total = dataValues.reduce((a, b) => a + b, 0);
+                  const pct = ((context.parsed / total) * 100).toFixed(1);
+                  return ` ${context.label}: ${formatMoney(context.parsed)} (${pct}%)`;
+                }
+              }
+            }
+          },
+          cutout: '68%'
+        }
+      });
+    }
+
+    function renderDayOfWeekChart() {
+      const ctx = document.getElementById('dayOfWeekChart').getContext('2d');
+      const theme = getChartThemeColors();
+
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const dayTotals = [0, 0, 0, 0, 0, 0, 0];
+
+      filteredOrders.forEach(o => {
+        const dayIdx = o.date.getDay();
+        dayTotals[dayIdx] += o.amount;
+      });
+
+      if (dayOfWeekChartInstance) {
+        dayOfWeekChartInstance.destroy();
+      }
+
+      dayOfWeekChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+          datasets: [{
+            label: 'Total Spend',
+            data: dayTotals,
+            backgroundColor: '#3b82f6',
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return ' ' + formatMoney(context.parsed.y);
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: theme.gridColor },
+              ticks: { color: theme.textColor, font: { size: 11 } }
+            },
+            y: {
+              grid: { color: theme.gridColor },
+              ticks: {
+                color: theme.textColor,
+                font: { size: 11 },
+                callback: value => '$' + value.toLocaleString()
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function renderTopItems() {
+      const container = document.getElementById('topItemsList');
+      const topItems = [...filteredOrders].sort((a, b) => b.amount - a.amount).slice(0, 5);
+
+      if (topItems.length === 0) {
+        container.innerHTML = '<p class="text-xs text-slate-400">No items available.</p>';
+        return;
+      }
+
+      container.innerHTML = topItems.map((item, idx) => `
+        <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+          <div class="flex items-center space-x-3 overflow-hidden mr-2">
+            <span class="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-bold text-xs flex items-center justify-center shrink-0">
+              ${idx + 1}
+            </span>
+            <div class="truncate">
+              <p class="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate" title="${item.title}">${item.title}</p>
+              <p class="text-[10px] text-slate-400">${item.date.toLocaleDateString()} &bull; ${item.category}</p>
+            </div>
+          </div>
+          <span class="text-xs font-extrabold text-slate-900 dark:text-white shrink-0">
+            ${formatMoney(item.amount)}
+          </span>
+        </div>
+      `).join('');
+    }
+
+    function renderTable() {
+      const search = document.getElementById('tableSearchInput').value.toLowerCase();
+      const tbody = document.getElementById('ordersTableBody');
+      
+      const rows = filteredOrders.filter(o => {
+        if (!search) return true;
+        return o.title.toLowerCase().includes(search) || 
+               o.category.toLowerCase().includes(search) ||
+               o.date.toLocaleDateString().includes(search);
+      });
+
+      document.getElementById('tableResultsCount').textContent = `Showing ${rows.length} of ${filteredOrders.length} orders`;
+
+      if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-6 text-slate-400 text-xs">No matching orders found.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = rows.slice(0, 100).map(o => `
+        <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+          <td class="py-3 px-4 text-xs text-slate-500 whitespace-nowrap">${o.date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+          <td class="py-3 px-4 text-xs font-medium text-slate-900 dark:text-slate-100 max-w-xs truncate" title="${o.title}">${o.title}</td>
+          <td class="py-3 px-4 text-xs">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              ${o.category}
+            </span>
+          </td>
+          <td class="py-3 px-4 text-xs font-bold text-right text-slate-900 dark:text-white whitespace-nowrap">${formatMoney(o.amount)}</td>
+        </tr>
+      `).join('');
+    }
+  </script>
+</body>
+</html>
