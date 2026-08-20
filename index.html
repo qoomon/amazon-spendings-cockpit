@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Amazon Spending Visualizer</title>
+  <title>Amazon Spending Visualizer & Cockpit</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -16,7 +16,8 @@
               DEFAULT: '#FF9900',
               dark: '#146EB4',
               navy: '#131921',
-              light: '#232F3E'
+              light: '#232F3E',
+              accent: '#f97316'
             }
           }
         }
@@ -27,6 +28,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <!-- PapaParse CDN for robust CSV parsing -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- JSZip CDN for extracting Amazon .zip export files -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <style>
@@ -41,12 +44,27 @@
     .dark .glass-card {
       background: rgba(26, 32, 44, 0.95);
     }
+    /* Custom scrollbar for tables */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(156, 163, 175, 0.4);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(156, 163, 175, 0.7);
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 min-h-screen transition-colors duration-200">
 
   <!-- Navbar -->
-  <header class="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md">
+  <header class="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
       <div class="flex items-center space-x-3">
         <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 shadow-md shadow-amber-500/20 font-black text-xl">
@@ -54,9 +72,9 @@
         </div>
         <div>
           <h1 class="font-bold text-lg leading-tight flex items-center gap-2">
-            Amazon Spendings <span class="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-semibold px-2 py-0.5 rounded-full">Analytics</span>
+            Amazon Spendings <span class="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-semibold px-2 py-0.5 rounded-full">Cockpit</span>
           </h1>
-          <p class="text-xs text-slate-500 dark:text-slate-400">100% Client-Side & Private</p>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Order History &amp; Refunds Analytics &bull; 100% Private</p>
         </div>
       </div>
 
@@ -65,9 +83,9 @@
           <i data-lucide="moon" class="w-5 h-5 hidden dark:block"></i>
           <i data-lucide="sun" class="w-5 h-5 block dark:hidden"></i>
         </button>
-        <button id="loadSampleBtn" class="text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded-lg transition flex items-center gap-1.5">
+        <button id="loadSampleBtn" class="text-xs font-medium bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 px-3 py-2 rounded-lg transition flex items-center gap-1.5 shadow-sm">
           <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-500"></i>
-          Try Sample Data
+          Try Sample Data (with Refunds)
         </button>
       </div>
     </div>
@@ -78,108 +96,234 @@
     <!-- Upload Section -->
     <section id="uploadSection" class="relative">
       <div id="dropzone" class="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-amber-500 dark:hover:border-amber-400 rounded-2xl p-8 sm:p-12 text-center bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition cursor-pointer group">
-        <input type="file" id="csvFileInput" accept=".csv,text/csv" class="hidden">
+        <input type="file" id="fileInput" accept=".zip,application/zip,application/x-zip-compressed" class="hidden">
         <div class="flex flex-col items-center justify-center space-y-4">
-          <div class="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center text-amber-600 dark:text-amber-400 group-hover:scale-110 transition duration-300">
-            <i data-lucide="upload-cloud" class="w-8 h-8"></i>
+          <div class="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center text-amber-600 dark:text-amber-400 group-hover:scale-110 transition duration-300 shadow-sm">
+            <i data-lucide="file-archive" class="w-8 h-8"></i>
           </div>
           <div>
-            <h3 class="text-lg font-bold text-slate-900 dark:text-white">Upload Amazon Order History CSV</h3>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-              Drag & drop your exported Amazon report file here, or <span class="text-amber-600 dark:text-amber-400 font-semibold underline">browse files</span>.
+            <h3 class="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">Upload Amazon "Your Orders" Export ZIP</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-lg mx-auto">
+              Drop your complete Amazon "Your Orders" export <span class="font-semibold text-amber-600 dark:text-amber-400">.ZIP</span> archive here to visualize spending and refunds.
             </p>
           </div>
-          <div class="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+          
+          <div class="flex flex-wrap items-center justify-center gap-2 max-w-lg text-xs text-slate-500 dark:text-slate-400 pt-1">
+            <span class="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700">
+              <i data-lucide="shopping-bag" class="w-3.5 h-3.5 text-blue-500"></i> Retail.OrderHistory
+            </span>
+            <span class="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700">
+              <i data-lucide="undo-2" class="w-3.5 h-3.5 text-rose-500"></i> Retail.Refunds
+            </span>
+            <span class="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-amber-500"></i> Retail.CustomerReturns
+            </span>
+            <span class="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700">
+              <i data-lucide="smartphone" class="w-3.5 h-3.5 text-purple-500"></i> Digital Items
+            </span>
+          </div>
+
+          <div class="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500 pt-2">
             <i data-lucide="shield-check" class="w-4 h-4 text-emerald-500"></i>
-            Your CSV is parsed entirely in your browser — zero data leaves your device.
+            ZIP archive is extracted and parsed 100% locally in your browser. Zero data leaves your device.
           </div>
         </div>
+      </div>
+
+      <!-- Loading Overlay -->
+      <div id="loadingOverlay" class="hidden absolute inset-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center space-y-3 z-20">
+        <div class="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+        <p id="loadingStatusText" class="text-sm font-semibold text-slate-700 dark:text-slate-300">Extracting and analyzing Amazon ZIP archive...</p>
       </div>
     </section>
 
     <!-- Dashboard Content (Initially Hidden until data parsed) -->
     <div id="dashboard" class="hidden space-y-8">
       
-      <!-- Controls & Filter Bar -->
-      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <div class="flex flex-wrap items-center gap-3">
-          <div class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-            <i data-lucide="filter" class="w-4 h-4 text-amber-500"></i>
-            <span class="font-semibold text-slate-700 dark:text-slate-300">Year Filter:</span>
+      <!-- Upload / Source Summary Info Card -->
+      <div id="importSummaryCard" class="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-200 dark:border-amber-900/40 rounded-2xl p-4 sm:p-5">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="flex items-start sm:items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <i data-lucide="archive" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <h2 id="summarySourceTitle" class="font-bold text-sm sm:text-base text-slate-900 dark:text-white">Amazon Export Data Loaded</h2>
+                <span id="summaryFileCountBadge" class="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 font-semibold px-2 py-0.5 rounded-full">ZIP archive</span>
+              </div>
+              <p id="summaryFilesDetail" class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Processed Order History, Refunds, Customer Returns &amp; Digital items.
+              </p>
+            </div>
           </div>
-          <select id="yearFilter" class="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500">
-            <option value="ALL">All Years</option>
-          </select>
-        </div>
-
-        <div class="flex items-center gap-2 text-xs text-slate-500">
-          <span id="loadedRecordsCount" class="font-medium bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md text-slate-700 dark:text-slate-300">0 orders loaded</span>
-          <button id="resetUploadBtn" class="text-rose-600 dark:text-rose-400 hover:underline px-2 py-1">Upload another CSV</button>
+          
+          <div class="flex items-center gap-2 flex-wrap text-xs">
+            <span id="summaryOrdersBadge" class="inline-flex items-center gap-1 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 font-medium text-slate-700 dark:text-slate-300">
+              <i data-lucide="shopping-bag" class="w-3.5 h-3.5 text-blue-500"></i> 0 Purchases
+            </span>
+            <span id="summaryRefundsBadge" class="inline-flex items-center gap-1 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 font-medium text-rose-600 dark:text-rose-400">
+              <i data-lucide="undo-2" class="w-3.5 h-3.5"></i> 0 Refunds
+            </span>
+            <button id="resetUploadBtn" class="text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 transition flex items-center gap-1">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Upload Another ZIP
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- KPI Summary Cards -->
-      <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <!-- Total Spend -->
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
-          <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
-            <span class="text-xs font-semibold uppercase tracking-wider">Total Spent</span>
-            <div class="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <i data-lucide="dollar-sign" class="w-4 h-4"></i>
+      <!-- Controls & Filter Bar -->
+      <div class="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          
+          <!-- Filters Group -->
+          <div class="flex flex-wrap items-center gap-3">
+            <!-- Year Filter -->
+            <div class="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+              <i data-lucide="calendar" class="w-4 h-4 text-amber-500"></i>
+              <span class="font-semibold">Year:</span>
+              <select id="yearFilter" class="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium">
+                <option value="ALL">All Years</option>
+              </select>
+            </div>
+
+            <!-- Transaction Type Filter -->
+            <div class="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+              <i data-lucide="filter" class="w-4 h-4 text-amber-500"></i>
+              <span class="font-semibold">Type:</span>
+              <select id="typeFilter" class="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium">
+                <option value="ALL">All (Orders &amp; Refunds)</option>
+                <option value="ORDERS">Purchases Only</option>
+                <option value="REFUNDS">Refunds &amp; Returns Only</option>
+              </select>
+            </div>
+
+            <!-- Category Filter -->
+            <div class="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+              <i data-lucide="tag" class="w-4 h-4 text-amber-500"></i>
+              <span class="font-semibold">Category:</span>
+              <select id="categoryFilter" class="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium">
+                <option value="ALL">All Categories</option>
+              </select>
             </div>
           </div>
-          <div id="kpiTotalSpend" class="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">$0.00</div>
-          <div id="kpiSpendSubtitle" class="text-xs text-slate-400 mt-1">Across all filtered orders</div>
+
+          <!-- Quick Stats & Actions -->
+          <div class="flex items-center gap-2.5 justify-between lg:justify-end text-xs text-slate-500">
+            <span id="loadedRecordsCount" class="font-semibold bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+              0 records
+            </span>
+            <button id="exportCsvBtn" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 font-medium" title="Export current filtered view to CSV">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              Export CSV
+            </button>
+          </div>
+
         </div>
 
-        <!-- Total Orders -->
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
+        <!-- Active Chart Filters Bar -->
+        <div id="activeChartFilterBar" class="hidden pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-slate-500 dark:text-slate-400 font-semibold flex items-center gap-1">
+              <i data-lucide="filter" class="w-3.5 h-3.5 text-amber-500"></i> Active Chart Filters:
+            </span>
+            <span id="ledgerTimelineFilterBadge" class="hidden inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40">
+              <span>Month: <strong id="ledgerTimelineFilterValue"></strong></span>
+              <button id="clearTimelineFilterBtn" class="hover:text-amber-950 dark:hover:text-white p-0.5" title="Remove month filter">&times;</button>
+            </span>
+            <span id="ledgerCategoryFilterBadge" class="hidden inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40">
+              <span>Category: <strong id="ledgerCategoryFilterValue"></strong></span>
+              <button id="clearCategoryFilterBtn" class="hover:text-blue-950 dark:hover:text-white p-0.5" title="Remove category filter">&times;</button>
+            </span>
+          </div>
+          <button id="clearAllChartFiltersBtn" class="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1">
+            <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Clear chart filters
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Summary Cards Grid -->
+      <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        
+        <!-- Net Spend Card -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm relative overflow-hidden">
           <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
-            <span class="text-xs font-semibold uppercase tracking-wider">Total Orders</span>
-            <div class="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-              <i data-lucide="shopping-bag" class="w-4 h-4"></i>
+            <span class="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">Net Spend</span>
+            <div class="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+              <i data-lucide="wallet" class="w-4 h-4"></i>
             </div>
           </div>
-          <div id="kpiTotalOrders" class="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">0</div>
-          <div id="kpiOrdersSubtitle" class="text-xs text-slate-400 mt-1">Items & shipments</div>
+          <div id="kpiNetSpend" class="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">$0.00</div>
+          <div id="kpiNetSpendBreakdown" class="text-[11px] text-slate-400 mt-1 truncate">Gross: $0.00 &bull; Ref: -$0.00</div>
+        </div>
+
+        <!-- Gross Spend Card -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
+          <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+            <span class="text-xs font-semibold uppercase tracking-wider">Gross Purchases</span>
+            <div class="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <i data-lucide="shopping-cart" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div id="kpiGrossSpend" class="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">$0.00</div>
+          <div id="kpiOrdersCountSubtitle" class="text-[11px] text-slate-400 mt-1">0 total items &amp; orders</div>
+        </div>
+
+        <!-- Refunds & Returns Card -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
+          <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Total Refunds</span>
+            <div class="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+              <i data-lucide="undo-2" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div id="kpiRefundsTotal" class="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">-$0.00</div>
+          <div id="kpiRefundsCountSubtitle" class="text-[11px] text-slate-400 mt-1">0 refunds (0.0% of gross)</div>
         </div>
 
         <!-- Average Order Value -->
         <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
           <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
-            <span class="text-xs font-semibold uppercase tracking-wider">Avg Order Value</span>
+            <span class="text-xs font-semibold uppercase tracking-wider">Avg Purchase</span>
             <div class="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 flex items-center justify-center">
               <i data-lucide="bar-chart-2" class="w-4 h-4"></i>
             </div>
           </div>
           <div id="kpiAvgOrder" class="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">$0.00</div>
-          <div class="text-xs text-slate-400 mt-1">Mean cost per transaction</div>
+          <div id="kpiAvgSubtitle" class="text-[11px] text-slate-400 mt-1">Per purchase transaction</div>
         </div>
 
-        <!-- Highest Single Item -->
+        <!-- Highest Single Purchase -->
         <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
           <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
-            <span class="text-xs font-semibold uppercase tracking-wider">Max Single Item</span>
-            <div class="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+            <span class="text-xs font-semibold uppercase tracking-wider">Max Purchase</span>
+            <div class="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <i data-lucide="crown" class="w-4 h-4"></i>
             </div>
           </div>
           <div id="kpiMaxItem" class="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">$0.00</div>
-          <div id="kpiMaxItemTitle" class="text-xs text-slate-400 mt-1 truncate" title="">None</div>
+          <div id="kpiMaxItemTitle" class="text-[11px] text-slate-400 mt-1 truncate" title="">None</div>
         </div>
+
       </section>
 
       <!-- Main Visual Charts Grid -->
       <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
         <!-- Monthly Spending Timeline -->
         <div class="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
-          <div class="flex items-center justify-between mb-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
-              <h3 class="text-base font-bold text-slate-900 dark:text-white">Spending Over Time</h3>
-              <p class="text-xs text-slate-400">Monthly spend breakdown ($)</p>
+              <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                Spending &amp; Refunds Over Time
+                <span id="timelineSelectionBadge" class="hidden text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 cursor-pointer hover:bg-amber-200 dark:hover:bg-amber-900/60 transition" title="Click to clear month selection">
+                  <span id="timelineSelectionText"></span> &times;
+                </span>
+              </h3>
+              <p class="text-xs text-slate-400">Monthly breakdown of purchases, refunds, and net spending &bull; <span class="text-amber-600 dark:text-amber-400 font-medium">Click bar to filter dashboard</span></p>
             </div>
             <div class="flex items-center gap-2">
-              <button id="chartTypeBar" class="p-1.5 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-medium">Bar</button>
+              <button id="chartTypeBar" class="p-1.5 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-semibold">Bar</button>
               <button id="chartTypeLine" class="p-1.5 rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-medium">Line</button>
             </div>
           </div>
@@ -188,61 +332,91 @@
           </div>
         </div>
 
-        <!-- Category / Tag Breakdown -->
+        <!-- Category Breakdown -->
         <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
           <div class="mb-4">
-            <h3 class="text-base font-bold text-slate-900 dark:text-white">Spend by Category</h3>
-            <p class="text-xs text-slate-400">Distribution across major product types</p>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              Spend by Category
+              <span id="categorySelectionBadge" class="hidden text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900/60 transition" title="Click to clear category selection">
+                <span id="categorySelectionText"></span> &times;
+              </span>
+            </h3>
+            <p class="text-xs text-slate-400">Net spending across product departments &bull; <span class="text-blue-600 dark:text-blue-400 font-medium">Click slice to filter dashboard</span></p>
           </div>
           <div class="relative h-72 sm:h-80 w-full flex items-center justify-center">
             <canvas id="categoryChart"></canvas>
           </div>
         </div>
+
       </section>
 
-      <!-- Secondary Visuals: Day of Week & Top 5 Items -->
-      <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Secondary Visuals: Day of Week & Highlights (Top Purchases / Top Refunds) -->
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
         <!-- Spend by Day of Week -->
         <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm">
           <div class="mb-4">
             <h3 class="text-base font-bold text-slate-900 dark:text-white">Spending by Day of Week</h3>
-            <p class="text-xs text-slate-400">Which days you shop the most</p>
+            <p class="text-xs text-slate-400">Purchasing activity distributed by weekday</p>
           </div>
           <div class="relative h-64 w-full">
             <canvas id="dayOfWeekChart"></canvas>
           </div>
         </div>
 
-        <!-- Top Most Expensive Purchases -->
+        <!-- Top Purchases -->
         <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
-          <div class="mb-4">
-            <h3 class="text-base font-bold text-slate-900 dark:text-white">Top 5 Most Expensive Items</h3>
-            <p class="text-xs text-slate-400">Single highest value items ordered</p>
+          <div class="mb-3">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+              <i data-lucide="trending-up" class="w-4 h-4 text-emerald-500"></i> Top 5 Purchases
+            </h3>
+            <p class="text-xs text-slate-400">Highest value single purchases</p>
           </div>
-          <div id="topItemsList" class="space-y-3">
+          <div id="topItemsList" class="space-y-2.5">
             <!-- Populated dynamically -->
           </div>
         </div>
-      </section>
 
-      <!-- Searchable / Filterable Orders Table -->
-      <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
-        <div class="p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h3 class="text-base font-bold text-slate-900 dark:text-white">Order Details</h3>
-            <p class="text-xs text-slate-400">Inspect item details and values</p>
+        <!-- Top Refunds & Returns -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
+          <div class="mb-3">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+              <i data-lucide="undo-2" class="w-4 h-4 text-rose-500"></i> Refunds &amp; Returns
+            </h3>
+            <p class="text-xs text-slate-400">Largest credits and return transactions</p>
           </div>
-          <div class="relative w-full sm:w-72">
-            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-            <input type="text" id="tableSearchInput" placeholder="Search orders, items, categories..." class="w-full pl-9 pr-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-800 dark:text-slate-200">
+          <div id="topRefundsList" class="space-y-2.5">
+            <!-- Populated dynamically -->
           </div>
         </div>
-        <div class="overflow-x-auto max-h-96">
-          <table class="w-full text-left border-collapse text-sm">
-            <thead class="sticky top-0 bg-slate-50 dark:bg-slate-800/90 backdrop-blur text-slate-500 dark:text-slate-400 text-xs uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
+
+      </section>
+
+      <!-- Searchable & Filterable Transactions Table -->
+      <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+        <div class="p-5 border-b border-slate-200 dark:border-slate-800">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                All Orders &amp; Refunds Ledger
+              </h3>
+              <p class="text-xs text-slate-400">Inspect line items, order IDs, refund reasons, and exact amounts</p>
+            </div>
+            <div class="relative w-full sm:w-80">
+              <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+              <input type="text" id="tableSearchInput" placeholder="Search orders, refunds, ASIN, ID..." class="w-full pl-9 pr-3 py-1.5 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-800 dark:text-slate-200">
+            </div>
+          </div>
+        </div>
+        
+        <div class="overflow-x-auto max-h-[28rem]">
+          <table class="w-full text-left border-collapse text-xs sm:text-sm">
+            <thead class="sticky top-0 bg-slate-50 dark:bg-slate-800/95 backdrop-blur text-slate-500 dark:text-slate-400 text-[11px] uppercase font-semibold border-b border-slate-200 dark:border-slate-800 z-10">
               <tr>
                 <th class="py-3 px-4">Date</th>
-                <th class="py-3 px-4">Title / Item</th>
+                <th class="py-3 px-4">Type</th>
+                <th class="py-3 px-4">Order ID</th>
+                <th class="py-3 px-4">Title / Item &amp; Reason</th>
                 <th class="py-3 px-4">Category</th>
                 <th class="py-3 px-4 text-right">Amount</th>
               </tr>
@@ -252,8 +426,10 @@
             </tbody>
           </table>
         </div>
-        <div class="p-3 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-400 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
-          <span id="tableResultsCount">Showing 0 orders</span>
+        
+        <div class="p-3.5 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex flex-col sm:flex-row justify-between items-center gap-2 bg-slate-50/50 dark:bg-slate-900/50">
+          <span id="tableResultsCount">Showing 0 transactions</span>
+          <span class="text-[11px] text-slate-400">Amounts reflect purchases (+) and refunds (-)</span>
         </div>
       </section>
 
@@ -264,13 +440,25 @@
     // Lucide icon initialization
     lucide.createIcons();
 
-    // State
-    let rawOrders = [];
-    let filteredOrders = [];
+    // Data State
+    let allTransactions = []; // Unified list of orders and refunds
+    let rawOrders = [];       // Orders only
+    let rawRefunds = [];      // Refunds only
+    let filteredTransactions = [];
+    let importSummary = {
+      sourceName: '',
+      filesProcessed: [],
+      totalOrders: 0,
+      totalRefunds: 0
+    };
+
+    // Chart Instances & Options
     let timelineChartInstance = null;
     let categoryChartInstance = null;
     let dayOfWeekChartInstance = null;
     let currentTimelineType = 'bar';
+    let selectedTimelineMonth = null; // Filter ledger by clicked month key (e.g. '2024-03')
+    let selectedCategorySlice = null; // Filter ledger by clicked category name
 
     // Theme Toggle
     const themeToggle = document.getElementById('themeToggle');
@@ -282,16 +470,19 @@
     themeToggle.addEventListener('click', () => {
       document.documentElement.classList.toggle('dark');
       localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
-      updateCharts(); // redraw charts to match dark mode styles
+      updateCharts();
     });
 
     // File Upload & Drag-Drop Handling
     const dropzone = document.getElementById('dropzone');
-    const csvFileInput = document.getElementById('csvFileInput');
+    const fileInput = document.getElementById('fileInput');
     const loadSampleBtn = document.getElementById('loadSampleBtn');
     const resetUploadBtn = document.getElementById('resetUploadBtn');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const loadingStatusText = document.getElementById('loadingStatusText');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
 
-    dropzone.addEventListener('click', () => csvFileInput.click());
+    dropzone.addEventListener('click', () => fileInput.click());
 
     dropzone.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -306,69 +497,494 @@
       e.preventDefault();
       dropzone.classList.remove('border-amber-500', 'bg-amber-50/20');
       if (e.dataTransfer.files.length > 0) {
-        parseCSVFile(e.dataTransfer.files[0]);
+        handleUploadedFiles(Array.from(e.dataTransfer.files));
       }
     });
 
-    csvFileInput.addEventListener('change', (e) => {
+    fileInput.addEventListener('change', (e) => {
       if (e.target.files.length > 0) {
-        parseCSVFile(e.target.files[0]);
+        handleUploadedFiles(Array.from(e.target.files));
       }
     });
 
     resetUploadBtn.addEventListener('click', () => {
       document.getElementById('dashboard').classList.add('hidden');
       document.getElementById('uploadSection').classList.remove('hidden');
-      csvFileInput.value = '';
+      fileInput.value = '';
     });
 
-    // Sample Data Generation
     loadSampleBtn.addEventListener('click', () => {
       loadSampleData();
     });
 
+    exportCsvBtn.addEventListener('click', () => {
+      exportCurrentViewToCSV();
+    });
+
+    // Helper: Clean currency amounts
     function cleanCurrency(val) {
-      if (!val) return 0;
-      if (typeof val === 'number') return val;
-      // Remove currency symbols, commas, spaces
-      const cleaned = val.toString().replace(/[^0-9.-]+/g, '');
+      if (val === null || val === undefined) return 0;
+      if (typeof val === 'number') return Math.abs(val);
+      const str = val.toString().trim();
+      if (!str) return 0;
+      // Handle parentheses negative notation like ($12.34)
+      const isNegative = str.includes('(') && str.includes(')');
+      const cleaned = str.replace(/[^0-9.-]+/g, '');
       const parsed = parseFloat(cleaned);
-      return isNaN(parsed) ? 0 : parsed;
+      if (isNaN(parsed)) return 0;
+      return Math.abs(isNegative ? -parsed : parsed);
     }
 
+    // Helper: Robust date parser for Amazon date formats
     function parseDate(dateStr) {
       if (!dateStr) return null;
-      const d = new Date(dateStr);
-      if (!isNaN(d.getTime())) return d;
+      if (dateStr instanceof Date && !isNaN(dateStr.getTime())) return dateStr;
+      
+      const trimmed = dateStr.toString().trim();
+      if (!trimmed) return null;
 
-      // Handle common Amazon formats like MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD
-      const parts = dateStr.split(/[-/]/);
-      if (parts.length === 3) {
-        if (parts[0].length === 4) { // YYYY-MM-DD
-          return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-        } else if (parts[2].length === 4) { // MM/DD/YYYY
-          return new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
+      // Handle ISO timestamp format (e.g. 2024-03-15T09:12:00Z)
+      const d = new Date(trimmed);
+      if (!isNaN(d.getTime()) && d.getFullYear() >= 1995 && d.getFullYear() <= 2099) {
+        return d;
+      }
+
+      // Handle common Amazon formats: YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, DD.MM.YYYY
+      const parts = trimmed.split(/[-/.\sT]/).filter(p => p.length > 0);
+      if (parts.length >= 3) {
+        const p0 = parseInt(parts[0], 10);
+        const p1 = parseInt(parts[1], 10);
+        const p2 = parseInt(parts[2], 10);
+
+        // Case 1: YYYY-MM-DD
+        if (parts[0].length === 4 && p0 >= 1995 && p1 >= 1 && p1 <= 12 && p2 >= 1 && p2 <= 31) {
+          return new Date(p0, p1 - 1, p2);
+        }
+        // Case 2: MM/DD/YYYY
+        if (parts[2].length === 4 && p2 >= 1995 && p0 >= 1 && p0 <= 12 && p1 >= 1 && p1 <= 31) {
+          return new Date(p2, p0 - 1, p1);
+        }
+        // Case 3: DD/MM/YYYY
+        if (parts[2].length === 4 && p2 >= 1995 && p1 >= 1 && p1 <= 12 && p0 >= 1 && p0 <= 31) {
+          return new Date(p2, p1 - 1, p0);
         }
       }
       return null;
     }
 
+    // Helper: Categorization heuristic
     function inferCategory(title) {
-      if (!title) return 'Other';
+      if (!title) return 'General Goods';
       const t = title.toLowerCase();
-      if (t.match(/cable|charger|usb|adapter|phone|laptop|mouse|keyboard|monitor|ssd|drive|headphone|earbud|airpods|battery|anker|apple|samsung|electronics/)) return 'Electronics & Tech';
-      if (t.match(/book|paperback|hardcover|kindle|novel|edition|guide|manual/)) return 'Books & Media';
-      if (t.match(/shirt|pant|shoe|sock|jacket|hat|dress|hoodie|clothing|sneaker|jean|apparel/)) return 'Clothing & Apparel';
-      if (t.match(/coffee|tea|snack|protein|vitamin|supplement|food|organic|drink|chocolate/)) return 'Grocery & Health';
-      if (t.match(/kitchen|pan|pot|blender|towel|cleaner|detergent|pillow|sheet|home|chair|desk|lamp/)) return 'Home & Kitchen';
-      if (t.match(/shampoo|soap|lotion|cream|toothbrush|paste|razor|grooming|beauty|cosmetic/)) return 'Beauty & Personal Care';
-      if (t.match(/game|toy|puzzle|lego|nintendo|playstation|xbox/)) return 'Toys & Gaming';
+      if (t.match(/cable|charger|usb|adapter|phone|laptop|mouse|keyboard|monitor|ssd|drive|headphone|earbud|airpods|battery|anker|apple|samsung|electronics|tv|camera|speaker|router|hdmi|power bank|kindle paperwhite|fire tv/)) return 'Electronics & Tech';
+      if (t.match(/book|paperback|hardcover|kindle|novel|edition|guide|manual|textbook|audiobook|audible|ebook/)) return 'Books & Media';
+      if (t.match(/shirt|pant|shoe|sock|jacket|hat|dress|hoodie|clothing|sneaker|jean|apparel|sweater|boot|underwear|coat|glove|belt/)) return 'Clothing & Apparel';
+      if (t.match(/coffee|tea|snack|protein|vitamin|supplement|food|organic|drink|chocolate|grocery|cereal|nuts|bar|pasta|sauce/)) return 'Grocery & Health';
+      if (t.match(/kitchen|pan|pot|blender|towel|cleaner|detergent|pillow|sheet|home|chair|desk|lamp|cookware|knife|air fryer|vacuum|curtain|mug|bedding/)) return 'Home & Kitchen';
+      if (t.match(/shampoo|soap|lotion|cream|toothbrush|paste|razor|grooming|beauty|cosmetic|perfume|cologne|sunscreen|serum|makeup/)) return 'Beauty & Personal Care';
+      if (t.match(/game|toy|puzzle|lego|nintendo|playstation|xbox|board game|action figure|doll|controller/)) return 'Toys & Gaming';
+      if (t.match(/fitness|gym|dumbbell|yoga|bike|sports|outdoor|tent|hiking|running|camp|golf|swim/)) return 'Sports & Outdoors';
+      if (t.match(/pet|dog|cat|litter|kibble|leash|aquarium|collar|chew/)) return 'Pet Supplies';
+      if (t.match(/tool|drill|screw|hammer|wrench|repair|hardware|light bulb|tape|paint|garden|lawn|hose/)) return 'Tools & Home Improvement';
       return 'General Goods';
     }
 
-    function normalizeRow(row) {
-      // Find date field
-      const dateKeys = ['Order Date', 'order date', 'Order Date (YYYY-MM-DD)', 'Date', 'date', 'Shipment Date'];
+    // Helper: Format currency string
+    function formatMoney(amount) {
+      const num = Number(amount) || 0;
+      return '$' + Math.abs(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // Helper: Escape HTML special characters
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    // Helper: Normalize Amazon domain / store origin
+    function normalizeAmazonDomain(domainOrText) {
+      if (!domainOrText || typeof domainOrText !== 'string') return null;
+      const str = domainOrText.trim().toLowerCase();
+      if (!str) return null;
+
+      // If full URL, extract hostname
+      if (str.startsWith('http://') || str.startsWith('https://')) {
+        try {
+          const parsed = new URL(str);
+          let host = parsed.hostname.toLowerCase();
+          if (host.startsWith('www.')) host = host.slice(4);
+          if (host.includes('amazon.')) return host;
+        } catch (e) {
+          // ignore parsing error
+        }
+      }
+
+      // Match explicit amazon domain format (e.g. amazon.de, amazon.co.uk, www.amazon.fr)
+      const amazonMatch = str.match(/(?:www\.)?(amazon\.(?:com\.au|co\.uk|co\.jp|com\.br|com\.mx|com\.tr|com\.be|com|de|fr|es|it|ca|nl|pl|se|in|sg|ae|sa|eg|cn))/i);
+      if (amazonMatch) {
+        return amazonMatch[1].toLowerCase();
+      }
+
+      // Check locale code tokens like de_DE, en_GB, fr_FR, es_ES, it_IT, ja_JP, de-DE, etc.
+      const localeMatch = str.match(/\b([a-z]{2})[_-]([a-z]{2})\b/i);
+      if (localeMatch) {
+        const countryCode = localeMatch[2].toLowerCase();
+        const countryMap = {
+          'de': 'amazon.de', 'at': 'amazon.de', 'ch': 'amazon.de',
+          'gb': 'amazon.co.uk', 'uk': 'amazon.co.uk',
+          'fr': 'amazon.fr', 'es': 'amazon.es', 'it': 'amazon.it',
+          'jp': 'amazon.co.jp', 'ca': 'amazon.ca', 'au': 'amazon.com.au',
+          'nl': 'amazon.nl', 'pl': 'amazon.pl', 'se': 'amazon.se',
+          'be': 'amazon.com.be', 'mx': 'amazon.com.mx', 'br': 'amazon.com.br',
+          'in': 'amazon.in', 'tr': 'amazon.com.tr', 'sg': 'amazon.sg',
+          'ae': 'amazon.ae', 'sa': 'amazon.sa', 'eg': 'amazon.eg',
+          'us': 'amazon.com'
+        };
+        if (countryMap[countryCode]) return countryMap[countryCode];
+      }
+
+      // Country / locale / marketplace mappings
+      const countryCodeMap = {
+        'de': 'amazon.de',
+        'deutschland': 'amazon.de',
+        'germany': 'amazon.de',
+        'at': 'amazon.de',
+        'ch': 'amazon.de',
+        'uk': 'amazon.co.uk',
+        'gb': 'amazon.co.uk',
+        'great britain': 'amazon.co.uk',
+        'united kingdom': 'amazon.co.uk',
+        'co.uk': 'amazon.co.uk',
+        'fr': 'amazon.fr',
+        'france': 'amazon.fr',
+        'es': 'amazon.es',
+        'spain': 'amazon.es',
+        'españa': 'amazon.es',
+        'it': 'amazon.it',
+        'italy': 'amazon.it',
+        'italia': 'amazon.it',
+        'ca': 'amazon.ca',
+        'canada': 'amazon.ca',
+        'jp': 'amazon.co.jp',
+        'japan': 'amazon.co.jp',
+        'co.jp': 'amazon.co.jp',
+        'au': 'amazon.com.au',
+        'australia': 'amazon.com.au',
+        'com.au': 'amazon.com.au',
+        'nl': 'amazon.nl',
+        'netherlands': 'amazon.nl',
+        'pl': 'amazon.pl',
+        'poland': 'amazon.pl',
+        'polska': 'amazon.pl',
+        'se': 'amazon.se',
+        'sweden': 'amazon.se',
+        'sverige': 'amazon.se',
+        'be': 'amazon.com.be',
+        'belgium': 'amazon.com.be',
+        'mx': 'amazon.com.mx',
+        'mexico': 'amazon.com.mx',
+        'br': 'amazon.com.br',
+        'brazil': 'amazon.com.br',
+        'brasil': 'amazon.com.br',
+        'in': 'amazon.in',
+        'india': 'amazon.in',
+        'tr': 'amazon.com.tr',
+        'turkey': 'amazon.com.tr',
+        'türkiye': 'amazon.com.tr',
+        'sg': 'amazon.sg',
+        'singapore': 'amazon.sg',
+        'ae': 'amazon.ae',
+        'uae': 'amazon.ae',
+        'sa': 'amazon.sa',
+        'saudi': 'amazon.sa',
+        'eg': 'amazon.eg',
+        'egypt': 'amazon.eg',
+        'us': 'amazon.com',
+        'usa': 'amazon.com',
+        'united states': 'amazon.com',
+        'com': 'amazon.com'
+      };
+
+      const cleanKey = str.replace(/^amazon\s*[-_.:]?\s*/i, '').replace(/[^a-z0-9.]+/g, ' ').trim();
+      if (countryCodeMap[cleanKey]) return countryCodeMap[cleanKey];
+      if (countryCodeMap[str]) return countryCodeMap[str];
+
+      // Check split tokens (e.g. "Retail.OrderHistory.de.csv" -> "de")
+      const tokens = str.split(/[^a-z0-9]+/).filter(t => t.length > 0);
+      for (const t of tokens) {
+        if (countryCodeMap[t] && t !== 'csv' && t !== 'retail' && t !== 'order' && t !== 'history' && t !== 'orders' && t !== 'refunds' && t !== 'returns' && t !== 'items') {
+          return countryCodeMap[t];
+        }
+      }
+
+      // Currency code mappings to primary store
+      const currencyMap = {
+        'eur': 'amazon.de',
+        'gbp': 'amazon.co.uk',
+        'usd': 'amazon.com',
+        'cad': 'amazon.ca',
+        'jpy': 'amazon.co.jp',
+        'aud': 'amazon.com.au',
+        'inr': 'amazon.in',
+        'brl': 'amazon.com.br',
+        'mxn': 'amazon.com.mx',
+        'sek': 'amazon.se',
+        'pln': 'amazon.pl',
+        'try': 'amazon.com.tr',
+        'sgd': 'amazon.sg',
+        'aed': 'amazon.ae',
+        'sar': 'amazon.sa',
+        'egp': 'amazon.eg',
+        'chf': 'amazon.de'
+      };
+
+      if (currencyMap[str]) return currencyMap[str];
+
+      return null;
+    }
+
+    // Helper: Detect Amazon store / domain from row metadata
+    function detectDomainFromRow(row, fileHint = '') {
+      if (!row) return normalizeAmazonDomain(fileHint) || 'amazon.com';
+
+      // 1. Direct website / marketplace fields
+      const websiteKeys = [
+        'Website', 'website', 'Website Name', 'Website_Name',
+        'Marketplace', 'marketplace', 'Marketplace ID', 'Marketplace_ID',
+        'Site', 'site', 'Domain', 'domain', 'Store', 'store',
+        'Amazon Store', 'Sales Channel', 'Platform', 'Merchant', 'Country', 'country'
+      ];
+
+      for (const k of websiteKeys) {
+        if (row[k]) {
+          const norm = normalizeAmazonDomain(String(row[k]));
+          if (norm) return norm;
+        }
+      }
+
+      // 2. Direct link columns (e.g. Order URL, Item URL, Product Link)
+      const linkKeys = ['Order Link', 'Product Link', 'Item URL', 'Link', 'URL', 'Order URL', 'Product URL'];
+      for (const k of linkKeys) {
+        if (row[k]) {
+          const norm = normalizeAmazonDomain(String(row[k]));
+          if (norm) return norm;
+        }
+      }
+
+      // 3. Currency field in row
+      const currencyKeys = ['Currency', 'currency', 'Currency Code', 'Currency_Code', 'Währung', 'Monnaie', 'Moneda', 'Valuta'];
+      for (const k of currencyKeys) {
+        if (row[k]) {
+          const norm = normalizeAmazonDomain(String(row[k]));
+          if (norm) return norm;
+        }
+      }
+
+      // 4. Currency symbols in raw amount fields
+      const amountKeys = ['Total Charged', 'Total Amount', 'Item Total', 'Refund Amount', 'Total Refunded', 'Price', 'Amount', 'total', 'Purchase Price Per Unit'];
+      for (const k of amountKeys) {
+        if (row[k]) {
+          const valStr = String(row[k]);
+          if (valStr.includes('€')) return 'amazon.de';
+          if (valStr.includes('£')) return 'amazon.co.uk';
+          if (valStr.includes('¥') || valStr.includes('￥')) return 'amazon.co.jp';
+          if (valStr.includes('₹')) return 'amazon.in';
+          if (valStr.includes('R$')) return 'amazon.com.br';
+          if (valStr.includes('zł')) return 'amazon.pl';
+          if (valStr.includes('kr')) return 'amazon.se';
+          if (valStr.includes('C$')) return 'amazon.ca';
+          if (valStr.includes('A$')) return 'amazon.com.au';
+        }
+      }
+
+      // 5. Fallback to file hint or default
+      if (fileHint) {
+        const fileDomain = normalizeAmazonDomain(fileHint);
+        if (fileDomain) return fileDomain;
+      }
+
+      return 'amazon.com';
+    }
+
+    // Helper: Generate Amazon Product / Article URL
+    function getAmazonArticleUrl(asin, title, domain = 'amazon.com') {
+      const host = normalizeAmazonDomain(domain) || 'amazon.com';
+      if (asin && typeof asin === 'string' && asin.trim().length > 0) {
+        return `https://www.${host}/dp/${encodeURIComponent(asin.trim())}`;
+      }
+      if (title && typeof title === 'string' && title.trim().length > 0) {
+        // Strip common refund prefixes for cleaner search
+        const cleanTitle = title.replace(/^Refund:\s*/i, '').replace(/\s*\([^)]*\)$/, '').trim();
+        if (cleanTitle.length > 0) {
+          return `https://www.${host}/s?k=${encodeURIComponent(cleanTitle)}`;
+        }
+      }
+      return null;
+    }
+
+    // Helper: Generate Amazon Order Details URL
+    function getAmazonOrderUrl(orderId, domain = 'amazon.com') {
+      const host = normalizeAmazonDomain(domain) || 'amazon.com';
+      if (orderId && typeof orderId === 'string' && orderId.trim().length > 0) {
+        return `https://www.${host}/gp/your-account/order-details?orderID=${encodeURIComponent(orderId.trim())}`;
+      }
+      return null;
+    }
+
+    // Process uploaded Amazon "Your Orders" export ZIP archive
+    async function handleUploadedFiles(files) {
+      if (!files || files.length === 0) return;
+
+      const file = files[0];
+      const lowerName = file.name.toLowerCase();
+      const isZip = lowerName.endsWith('.zip') || (file.type && file.type.includes('zip'));
+
+      if (!isZip) {
+        alert('Please upload an Amazon "Your Orders" export .ZIP archive (e.g. Your Orders.zip). Uploading individual files is not supported.');
+        return;
+      }
+
+      loadingOverlay.classList.remove('hidden');
+      loadingStatusText.textContent = `Unpacking ZIP archive: ${file.name}...`;
+
+      try {
+        const orderRows = [];
+        const refundRows = [];
+        const filesProcessed = [];
+        const primarySourceName = file.name;
+
+        const zip = new JSZip();
+        let zipInput = file;
+        if (typeof file.arrayBuffer === 'function') {
+          zipInput = await file.arrayBuffer();
+        }
+        const unzipped = await zip.loadAsync(zipInput);
+
+        // Iterate over all files in zip
+        for (const [relativePath, zipEntry] of Object.entries(unzipped.files)) {
+          if (zipEntry.dir) continue;
+          if (relativePath.toLowerCase().endsWith('.csv')) {
+            loadingStatusText.textContent = `Parsing ${relativePath}...`;
+            const csvText = await zipEntry.async('string');
+            const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+            
+            if (parsed.data && parsed.data.length > 0) {
+              const classification = classifyAndNormalizeFile(relativePath, parsed.data);
+              if (classification.orders.length > 0) orderRows.push(...classification.orders);
+              if (classification.refunds.length > 0) refundRows.push(...classification.refunds);
+              
+              filesProcessed.push({
+                name: relativePath.split('/').pop() || relativePath,
+                ordersCount: classification.orders.length,
+                refundsCount: classification.refunds.length
+              });
+            }
+          }
+        }
+
+        if (orderRows.length === 0 && refundRows.length === 0) {
+          alert('Could not find any valid Amazon orders or refunds inside the uploaded ZIP archive. Please verify that you uploaded a complete Amazon "Your Orders" export ZIP file.');
+          loadingOverlay.classList.add('hidden');
+          return;
+        }
+
+        importSummary = {
+          sourceName: primarySourceName,
+          filesProcessed: filesProcessed,
+          totalOrders: orderRows.length,
+          totalRefunds: refundRows.length
+        };
+
+        processExtractedData(orderRows, refundRows);
+
+      } catch (err) {
+        console.error('File parsing error:', err);
+        alert('An error occurred while reading the ZIP file: ' + err.message);
+      } finally {
+        loadingOverlay.classList.add('hidden');
+      }
+    }
+
+    // Classify CSV file content by filename and headers
+    function classifyAndNormalizeFile(filePath, rawRows) {
+      const lowerPath = filePath.toLowerCase();
+      const firstRow = rawRows[0] || {};
+      const headers = Object.keys(firstRow).map(h => h.toLowerCase());
+
+      const isRefundFile = lowerPath.includes('refund') || 
+                           lowerPath.includes('return') || 
+                           headers.some(h => h.includes('refund amount') || h.includes('total refunded') || h.includes('return reason') || h.includes('refund reason'));
+
+      const orders = [];
+      const refunds = [];
+
+      if (isRefundFile) {
+        for (const row of rawRows) {
+          const item = normalizeRefundRow(row, filePath);
+          if (item && item.amount > 0 && item.date) {
+            refunds.push(item);
+          }
+        }
+      } else {
+        // Order history / Items / Digital file
+        for (const row of rawRows) {
+          // Check if individual row is a refund or an order
+          const refundAmt = getRefundAmountFromRow(row);
+          if (refundAmt > 0 && !hasPurchaseAmount(row)) {
+            const refItem = normalizeRefundRow(row, filePath);
+            if (refItem && refItem.date) refunds.push(refItem);
+          } else {
+            const ordItem = normalizeOrderRow(row, filePath);
+            if (ordItem && ordItem.amount > 0 && ordItem.date) {
+              orders.push(ordItem);
+            }
+          }
+        }
+      }
+
+      return { orders, refunds };
+    }
+
+    function hasPurchaseAmount(row) {
+      const keys = ['Total Charged', 'Total Amount', 'Item Total', 'Purchase Price Per Unit', 'Item Subtotal', 'Price', 'total', 'Amount', 'total_charged', 'Item Price'];
+      for (const k of keys) {
+        if (row[k] !== undefined && row[k] !== '') {
+          if (cleanCurrency(row[k]) > 0) return true;
+        }
+      }
+      return false;
+    }
+
+    function getRefundAmountFromRow(row) {
+      const refundKeys = ['Refund Amount', 'Total Refunded', 'Refund', 'Total Refund', 'Amount Refunded', 'Credit Amount', 'Refund Total', 'refund_amount', 'Item Refund'];
+      for (const k of refundKeys) {
+        if (row[k] !== undefined && row[k] !== '') {
+          const val = cleanCurrency(row[k]);
+          if (val > 0) return val;
+        }
+      }
+      return 0;
+    }
+
+    function getOrderIdFromRow(row) {
+      const orderIdKeys = ['Order ID', 'order id', 'Order Id', 'amazon-order-id', 'Order Number', 'order_id', 'Order-ID'];
+      for (const k of orderIdKeys) {
+        if (row[k] && row[k].toString().trim()) {
+          return row[k].toString().trim();
+        }
+      }
+      return '';
+    }
+
+    // Normalize an Order row
+    function normalizeOrderRow(row, fileHint = '') {
+      // Date detection
+      const dateKeys = ['Order Date', 'order date', 'Order Date (YYYY-MM-DD)', 'Date', 'date', 'Purchase Date', 'Order_Date', 'order_date', 'purchase-date', 'Shipment Date', 'Release Date'];
       let dateVal = null;
       for (const k of dateKeys) {
         if (row[k]) {
@@ -377,8 +993,8 @@
         }
       }
 
-      // Find amount field
-      const amountKeys = ['Total Charged', 'Total Amount', 'Item Total', 'Purchase Price Per Unit', 'Item Subtotal', 'total', 'Amount', 'Item Price'];
+      // Amount detection
+      const amountKeys = ['Total Charged', 'Total Amount', 'Item Total', 'Purchase Price Per Unit', 'Item Subtotal', 'Item Price', 'total', 'Amount', 'Price', 'Principal', 'Total Owed', 'total_charged', 'item_total', 'Order Total', 'Payment Amount'];
       let amountVal = 0;
       for (const k of amountKeys) {
         if (row[k] !== undefined && row[k] !== '') {
@@ -390,22 +1006,22 @@
         }
       }
 
-      // Find title field
-      const titleKeys = ['Title', 'Product Name', 'Item Description', 'Item Name', 'Product description', 'Description', 'Item Subtotal Tax'];
+      // Title detection
+      const titleKeys = ['Title', 'Product Name', 'Item Description', 'Item Name', 'Product description', 'Description', 'product_name', 'title', 'Item Name', 'Description / Item'];
       let titleVal = 'Amazon Item';
       for (const k of titleKeys) {
-        if (row[k] && row[k].trim().length > 0) {
-          titleVal = row[k].trim();
+        if (row[k] && row[k].toString().trim().length > 0) {
+          titleVal = row[k].toString().trim();
           break;
         }
       }
 
-      // Find category field or infer
-      const categoryKeys = ['Category', 'Product Category', 'UNSPSC Code'];
+      // Category detection
+      const categoryKeys = ['Category', 'Product Category', 'UNSPSC Code', 'category', 'Department'];
       let categoryVal = null;
       for (const k of categoryKeys) {
-        if (row[k] && row[k].trim().length > 0) {
-          categoryVal = row[k].trim();
+        if (row[k] && row[k].toString().trim().length > 0) {
+          categoryVal = row[k].toString().trim();
           break;
         }
       }
@@ -413,69 +1029,155 @@
         categoryVal = inferCategory(titleVal);
       }
 
+      const orderId = getOrderIdFromRow(row);
+      const asin = row['ASIN'] || row['asin'] || row['ASIN/ISBN'] || '';
+      const domain = detectDomainFromRow(row, fileHint);
+
       return {
+        type: 'ORDER',
+        isRefund: false,
         date: dateVal,
         amount: amountVal,
         title: titleVal,
-        category: categoryVal
+        category: categoryVal,
+        orderId: orderId,
+        asin: asin,
+        domain: domain,
+        raw: row
       };
     }
 
-    function parseCSVFile(file) {
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        dynamicTyping: false,
-        complete: function(results) {
-          processParsedData(results.data);
-        },
-        error: function(err) {
-          alert('Failed to parse CSV file: ' + err.message);
+    // Normalize a Refund / Return row
+    function normalizeRefundRow(row, fileHint = '') {
+      // Date detection (prefer Refund Date, then Return Date, then Date / Order Date)
+      const dateKeys = ['Refund Date', 'Return Date', 'refund_date', 'Refund Date (YYYY-MM-DD)', 'Date', 'date', 'Transaction Date', 'Order Date', 'order date'];
+      let dateVal = null;
+      for (const k of dateKeys) {
+        if (row[k]) {
+          dateVal = parseDate(row[k]);
+          if (dateVal) break;
+        }
+      }
+
+      // Refund Amount detection
+      const amountVal = getRefundAmountFromRow(row) || cleanCurrency(row['Amount'] || row['total'] || row['Total Charged']);
+
+      // Title detection
+      const titleKeys = ['Title', 'Product Name', 'Item Description', 'Item Name', 'Product description', 'Description', 'product_name', 'title'];
+      let titleVal = '';
+      for (const k of titleKeys) {
+        if (row[k] && row[k].toString().trim().length > 0) {
+          titleVal = row[k].toString().trim();
+          break;
+        }
+      }
+
+      // Reason detection
+      const reasonKeys = ['Refund Reason', 'Return Reason', 'Reason', 'refund_reason', 'return_reason', 'Return Status', 'Status'];
+      let reasonVal = '';
+      for (const k of reasonKeys) {
+        if (row[k] && row[k].toString().trim().length > 0) {
+          reasonVal = row[k].toString().trim();
+          break;
+        }
+      }
+
+      const orderId = getOrderIdFromRow(row);
+      const asin = row['ASIN'] || row['asin'] || '';
+      const domain = detectDomainFromRow(row, fileHint);
+
+      // Category detection
+      const categoryKeys = ['Category', 'Product Category', 'UNSPSC Code', 'category'];
+      let categoryVal = null;
+      for (const k of categoryKeys) {
+        if (row[k] && row[k].toString().trim().length > 0) {
+          categoryVal = row[k].toString().trim();
+          break;
+        }
+      }
+
+      return {
+        type: 'REFUND',
+        isRefund: true,
+        date: dateVal,
+        amount: amountVal,
+        title: titleVal,
+        reason: reasonVal,
+        category: categoryVal,
+        orderId: orderId,
+        asin: asin,
+        domain: domain,
+        raw: row
+      };
+    }
+
+    // Process and correlate orders with refunds
+    function processExtractedData(orders, refunds) {
+      // Build order lookup map by Order ID for fast refund title & category enrichment
+      const orderMap = new Map();
+      orders.forEach(o => {
+        if (o.orderId) {
+          if (!orderMap.has(o.orderId)) {
+            orderMap.set(o.orderId, []);
+          }
+          orderMap.get(o.orderId).push(o);
         }
       });
-    }
 
-    function loadSampleData() {
-      const sampleRows = [
-        {"Order Date": "2024-01-12", "Title": "Sony WH-1000XM5 Wireless Noise Canceling Headphones", "Total Charged": "$348.00", "Category": "Electronics & Tech"},
-        {"Order Date": "2024-01-20", "Title": "Nespresso VertuoPlus Coffee and Espresso Machine", "Total Charged": "$159.95", "Category": "Home & Kitchen"},
-        {"Order Date": "2024-02-05", "Title": "Atomic Habits by James Clear", "Total Charged": "$14.99", "Category": "Books & Media"},
-        {"Order Date": "2024-02-14", "Title": "Anker USB C Charger 65W Fast Charger", "Total Charged": "$39.99", "Category": "Electronics & Tech"},
-        {"Order Date": "2024-02-28", "Title": "Organic Whole Bean Coffee 2lb", "Total Charged": "$24.50", "Category": "Grocery & Health"},
-        {"Order Date": "2024-03-08", "Title": "Ergonomic Office Mesh Chair", "Total Charged": "$219.00", "Category": "Home & Kitchen"},
-        {"Order Date": "2024-03-15", "Title": "Running Shoes Men Lightweight Breathable", "Total Charged": "$85.00", "Category": "Clothing & Apparel"},
-        {"Order Date": "2024-04-02", "Title": "Apple MagSafe Battery Pack", "Total Charged": "$99.00", "Category": "Electronics & Tech"},
-        {"Order Date": "2024-04-22", "Title": "Hydro Flask 32 oz Wide Mouth Water Bottle", "Total Charged": "$44.95", "Category": "Home & Kitchen"},
-        {"Order Date": "2024-05-10", "Title": "LG 27-inch 4K UHD UltraFine Monitor", "Total Charged": "$396.99", "Category": "Electronics & Tech"},
-        {"Order Date": "2024-05-18", "Title": "Stainless Steel Kitchen Knife Set 8-Piece", "Total Charged": "$69.99", "Category": "Home & Kitchen"},
-        {"Order Date": "2024-06-01", "Title": "Designing Data-Intensive Applications", "Total Charged": "$45.50", "Category": "Books & Media"},
-        {"Order Date": "2024-06-15", "Title": "Electric Toothbrush with 4 Brush Heads", "Total Charged": "$59.99", "Category": "Beauty & Personal Care"},
-        {"Order Date": "2024-07-04", "Title": "Kindle Paperwhite (16 GB)", "Total Charged": "$149.99", "Category": "Electronics & Tech"},
-        {"Order Date": "2024-07-20", "Title": "Whey Protein Isolate Vanilla 5lb", "Total Charged": "$74.99", "Category": "Grocery & Health"},
-        {"Order Date": "2023-11-24", "Title": "Apple MacBook Air M2 13-inch", "Total Charged": "$999.00", "Category": "Electronics & Tech"},
-        {"Order Date": "2023-12-05", "Title": "LEGO Star Wars Millennium Falcon", "Total Charged": "$169.99", "Category": "Toys & Gaming"},
-        {"Order Date": "2023-12-18", "Title": "Merino Wool Winter Beanie & Scarf Set", "Total Charged": "$48.00", "Category": "Clothing & Apparel"}
-      ];
-      processParsedData(sampleRows);
-    }
+      // Enrich refunds with matched order data if missing
+      const enrichedRefunds = refunds.map(ref => {
+        let title = ref.title;
+        let category = ref.category;
+        let asin = ref.asin;
+        let domain = ref.domain;
 
-    function processParsedData(rows) {
-      if (!rows || rows.length === 0) {
-        alert('The uploaded file appears to be empty.');
-        return;
-      }
+        if (ref.orderId && orderMap.has(ref.orderId)) {
+          const matchedOrders = orderMap.get(ref.orderId);
+          const matched = matchedOrders[0];
+          if (!title && matched) {
+            title = `Refund: ${matched.title}`;
+          }
+          if (!category && matched) {
+            category = matched.category;
+          }
+          if (!asin && matched && matched.asin) {
+            asin = matched.asin;
+          }
+          if ((!domain || domain === 'amazon.com') && matched && matched.domain) {
+            domain = matched.domain;
+          }
+        }
 
-      rawOrders = rows
-        .map(normalizeRow)
-        .filter(order => order.date !== null && order.amount > 0)
-        .sort((a, b) => b.date - a.date);
+        if (!title) {
+          title = ref.orderId ? `Refund for Order #${ref.orderId}` : 'Amazon Refund / Return';
+        }
+        if (ref.reason && !title.toLowerCase().includes(ref.reason.toLowerCase())) {
+          title = `${title} (${ref.reason})`;
+        }
+        if (!category) {
+          category = inferCategory(title);
+        }
 
-      if (rawOrders.length === 0) {
-        alert('Could not find valid dates and amounts in this CSV. Please check that it is an Amazon Order History report.');
-        return;
-      }
+        return {
+          ...ref,
+          title,
+          category,
+          asin,
+          domain: domain || 'amazon.com'
+        };
+      });
 
-      populateYearFilter();
+      rawOrders = orders.filter(o => o.date !== null && o.amount > 0);
+      rawRefunds = enrichedRefunds.filter(r => r.date !== null && r.amount > 0);
+
+      // Unified transactions list sorted newest first
+      allTransactions = [...rawOrders, ...rawRefunds].sort((a, b) => b.date - a.date);
+
+      selectedTimelineMonth = null;
+      selectedCategorySlice = null;
+
+      populateFilterOptions();
+      updateImportSummaryCard();
       applyFilters();
 
       document.getElementById('uploadSection').classList.add('hidden');
@@ -483,10 +1185,143 @@
       lucide.createIcons();
     }
 
-    function populateYearFilter() {
+    // Format 'YYYY-MM' key into readable month label (e.g. "Jan 2024")
+    function formatMonthKey(key) {
+      if (!key) return '';
+      const [y, m] = key.split('-');
+      const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+      return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    }
+
+    // Helper to get transactions filtered by all active macro and chart filters
+    function getActiveFilteredTransactions(options = {}) {
       const yearFilter = document.getElementById('yearFilter');
-      const years = Array.from(new Set(rawOrders.map(o => o.date.getFullYear()))).sort((a, b) => b - a);
+      const typeFilter = document.getElementById('typeFilter');
+      const categoryFilter = document.getElementById('categoryFilter');
+
+      const selectedYear = yearFilter ? yearFilter.value : 'ALL';
+      const selectedType = typeFilter ? typeFilter.value : 'ALL';
+      const selectedCategory = categoryFilter ? categoryFilter.value : 'ALL';
+
+      return allTransactions.filter(t => {
+        // Macro Year filter
+        if (selectedYear !== 'ALL' && t.date.getFullYear() !== parseInt(selectedYear, 10)) {
+          return false;
+        }
+        // Macro Type filter
+        if (selectedType === 'ORDERS' && t.isRefund) return false;
+        if (selectedType === 'REFUNDS' && !t.isRefund) return false;
+        // Macro Category filter
+        if (selectedCategory !== 'ALL' && t.category !== selectedCategory) {
+          return false;
+        }
+        // Active Chart Month Filter (unless excluded by caller, e.g. timeline chart rendering)
+        if (!options.ignoreTimelineMonth && selectedTimelineMonth) {
+          const monthKey = `${t.date.getFullYear()}-${String(t.date.getMonth() + 1).padStart(2, '0')}`;
+          if (monthKey !== selectedTimelineMonth) return false;
+        }
+        // Active Chart Category Filter (unless excluded by caller, e.g. category chart rendering)
+        if (!options.ignoreCategorySlice && selectedCategorySlice) {
+          if (t.category !== selectedCategorySlice) return false;
+        }
+        return true;
+      });
+    }
+
+    // Get transactions for the ledger table taking into account all active filters
+    function getLedgerTransactions() {
+      return getActiveFilteredTransactions();
+    }
+
+    // Update active chart selection indicators on chart headers and ledger notification bar
+    function updateChartSelectionUI() {
+      const timelineBadge = document.getElementById('timelineSelectionBadge');
+      const timelineText = document.getElementById('timelineSelectionText');
+      const categoryBadge = document.getElementById('categorySelectionBadge');
+      const categoryText = document.getElementById('categorySelectionText');
+
+      const activeBar = document.getElementById('activeChartFilterBar');
+      const ledgerTimelineBadge = document.getElementById('ledgerTimelineFilterBadge');
+      const ledgerTimelineVal = document.getElementById('ledgerTimelineFilterValue');
+      const ledgerCatBadge = document.getElementById('ledgerCategoryFilterBadge');
+      const ledgerCatVal = document.getElementById('ledgerCategoryFilterValue');
+
+      if (selectedTimelineMonth) {
+        const formatted = formatMonthKey(selectedTimelineMonth);
+        if (timelineBadge) {
+          timelineBadge.classList.remove('hidden');
+          timelineText.textContent = formatted;
+        }
+        if (ledgerTimelineBadge) {
+          ledgerTimelineBadge.classList.remove('hidden');
+          ledgerTimelineVal.textContent = formatted;
+        }
+      } else {
+        if (timelineBadge) timelineBadge.classList.add('hidden');
+        if (ledgerTimelineBadge) ledgerTimelineBadge.classList.add('hidden');
+      }
+
+      if (selectedCategorySlice) {
+        if (categoryBadge) {
+          categoryBadge.classList.remove('hidden');
+          categoryText.textContent = selectedCategorySlice;
+        }
+        if (ledgerCatBadge) {
+          ledgerCatBadge.classList.remove('hidden');
+          ledgerCatVal.textContent = selectedCategorySlice;
+        }
+      } else {
+        if (categoryBadge) categoryBadge.classList.add('hidden');
+        if (ledgerCatBadge) ledgerCatBadge.classList.add('hidden');
+      }
+
+      if (activeBar) {
+        if (selectedTimelineMonth || selectedCategorySlice) {
+          activeBar.classList.remove('hidden');
+        } else {
+          activeBar.classList.add('hidden');
+        }
+      }
+
+      lucide.createIcons();
+    }
+
+    // Update Import Summary card
+    function updateImportSummaryCard() {
+      document.getElementById('summarySourceTitle').textContent = importSummary.sourceName || 'Amazon Export Archive';
       
+      const fileBadge = document.getElementById('summaryFileCountBadge');
+      if (importSummary.filesProcessed.length > 1) {
+        fileBadge.textContent = `${importSummary.filesProcessed.length} files parsed from ZIP`;
+      } else if (importSummary.filesProcessed.length === 1) {
+        fileBadge.textContent = importSummary.filesProcessed[0].name;
+      } else {
+        fileBadge.textContent = 'Data Loaded';
+      }
+
+      const filesDetail = document.getElementById('summaryFilesDetail');
+      if (importSummary.filesProcessed.length > 0) {
+        const fileNames = importSummary.filesProcessed.map(f => f.name).join(', ');
+        filesDetail.textContent = `Includes: ${fileNames}`;
+      } else {
+        filesDetail.textContent = 'Amazon order history and refund transactions processed.';
+      }
+
+      document.getElementById('summaryOrdersBadge').innerHTML = `
+        <i data-lucide="shopping-bag" class="w-3.5 h-3.5 text-blue-500"></i> ${rawOrders.length.toLocaleString()} Purchases
+      `;
+      document.getElementById('summaryRefundsBadge').innerHTML = `
+        <i data-lucide="undo-2" class="w-3.5 h-3.5 text-rose-500"></i> ${rawRefunds.length.toLocaleString()} Refunds
+      `;
+      lucide.createIcons();
+    }
+
+    // Populate Year and Category filter dropdowns
+    function populateFilterOptions() {
+      const yearFilter = document.getElementById('yearFilter');
+      const categoryFilter = document.getElementById('categoryFilter');
+
+      const years = Array.from(new Set(allTransactions.map(t => t.date.getFullYear()))).sort((a, b) => b - a);
       yearFilter.innerHTML = '<option value="ALL">All Years</option>';
       years.forEach(yr => {
         const opt = document.createElement('option');
@@ -494,14 +1329,48 @@
         opt.textContent = yr;
         yearFilter.appendChild(opt);
       });
+
+      const categories = Array.from(new Set(allTransactions.map(t => t.category))).sort();
+      categoryFilter.innerHTML = '<option value="ALL">All Categories</option>';
+      categories.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat;
+        categoryFilter.appendChild(opt);
+      });
     }
 
-    document.getElementById('yearFilter').addEventListener('change', () => {
-      applyFilters();
+    // Filter Listeners
+    document.getElementById('yearFilter').addEventListener('change', applyFilters);
+    document.getElementById('typeFilter').addEventListener('change', applyFilters);
+    document.getElementById('categoryFilter').addEventListener('change', applyFilters);
+    document.getElementById('tableSearchInput').addEventListener('input', renderTable);
+
+    // Chart Filter Clear Listeners
+    document.getElementById('clearTimelineFilterBtn')?.addEventListener('click', () => {
+      selectedTimelineMonth = null;
+      refreshAllWidgets();
     });
 
-    document.getElementById('tableSearchInput').addEventListener('input', () => {
-      renderTable();
+    document.getElementById('timelineSelectionBadge')?.addEventListener('click', () => {
+      selectedTimelineMonth = null;
+      refreshAllWidgets();
+    });
+
+    document.getElementById('clearCategoryFilterBtn')?.addEventListener('click', () => {
+      selectedCategorySlice = null;
+      refreshAllWidgets();
+    });
+
+    document.getElementById('categorySelectionBadge')?.addEventListener('click', () => {
+      selectedCategorySlice = null;
+      refreshAllWidgets();
+    });
+
+    document.getElementById('clearAllChartFiltersBtn')?.addEventListener('click', () => {
+      selectedTimelineMonth = null;
+      selectedCategorySlice = null;
+      refreshAllWidgets();
     });
 
     document.getElementById('chartTypeBar').addEventListener('click', () => {
@@ -528,41 +1397,77 @@
       }
     }
 
+    // Apply active filters across all views
     function applyFilters() {
       const selectedYear = document.getElementById('yearFilter').value;
-      if (selectedYear === 'ALL') {
-        filteredOrders = [...rawOrders];
-      } else {
-        const yr = parseInt(selectedYear);
-        filteredOrders = rawOrders.filter(o => o.date.getFullYear() === yr);
+      const selectedCategory = document.getElementById('categoryFilter').value;
+
+      // Synchronize chart selections when macro filters change
+      if (selectedTimelineMonth && selectedYear !== 'ALL') {
+        const [selYear] = selectedTimelineMonth.split('-');
+        if (selYear !== selectedYear) {
+          selectedTimelineMonth = null;
+        }
+      }
+      if (selectedCategorySlice && selectedCategory !== 'ALL') {
+        if (selectedCategorySlice !== selectedCategory) {
+          selectedCategorySlice = null;
+        }
       }
 
-      document.getElementById('loadedRecordsCount').textContent = `${filteredOrders.length} order${filteredOrders.length === 1 ? '' : 's'} shown`;
+      refreshAllWidgets();
+    }
+
+    // Refresh all dashboard widgets with the active filtered dataset
+    function refreshAllWidgets() {
+      filteredTransactions = getActiveFilteredTransactions();
+
+      const ordersCount = filteredTransactions.filter(t => !t.isRefund).length;
+      const refundsCount = filteredTransactions.filter(t => t.isRefund).length;
+      document.getElementById('loadedRecordsCount').textContent = `${filteredTransactions.length} records (${ordersCount} purchases, ${refundsCount} refunds)`;
+
       updateKPIs();
       updateCharts();
-      renderTopItems();
+      renderHighlights();
+      updateChartSelectionUI();
       renderTable();
     }
 
-    function formatMoney(amount) {
-      return '$' + amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
+    // Calculate & render KPIs
     function updateKPIs() {
-      const totalSpend = filteredOrders.reduce((sum, o) => sum + o.amount, 0);
-      const totalCount = filteredOrders.length;
-      const avgOrder = totalCount > 0 ? (totalSpend / totalCount) : 0;
-      
+      const activeTransactions = getActiveFilteredTransactions();
+      filteredTransactions = activeTransactions;
+      const currentOrders = activeTransactions.filter(t => !t.isRefund);
+      const currentRefunds = activeTransactions.filter(t => t.isRefund);
+
+      const grossSpend = currentOrders.reduce((sum, o) => sum + o.amount, 0);
+      const totalRefunds = currentRefunds.reduce((sum, r) => sum + r.amount, 0);
+      const netSpend = grossSpend - totalRefunds;
+
+      const orderCount = currentOrders.length;
+      const refundCount = currentRefunds.length;
+      const avgOrder = orderCount > 0 ? (grossSpend / orderCount) : 0;
+      const refundRate = grossSpend > 0 ? ((totalRefunds / grossSpend) * 100).toFixed(1) : '0.0';
+
       let maxItem = { amount: 0, title: 'None' };
-      filteredOrders.forEach(o => {
+      currentOrders.forEach(o => {
         if (o.amount > maxItem.amount) {
           maxItem = o;
         }
       });
 
-      document.getElementById('kpiTotalSpend').textContent = formatMoney(totalSpend);
-      document.getElementById('kpiTotalOrders').textContent = totalCount.toLocaleString();
+      document.getElementById('kpiNetSpend').textContent = formatMoney(netSpend);
+      document.getElementById('kpiNetSpendBreakdown').textContent = `Gross: ${formatMoney(grossSpend)} • Refunds: -${formatMoney(totalRefunds)}`;
+
+      document.getElementById('kpiGrossSpend').textContent = formatMoney(grossSpend);
+      document.getElementById('kpiOrdersCountSubtitle').textContent = `${orderCount.toLocaleString()} purchase${orderCount === 1 ? '' : 's'}`;
+
+      document.getElementById('kpiRefundsTotal').textContent = totalRefunds > 0 ? `-${formatMoney(totalRefunds)}` : '$0.00';
+      document.getElementById('kpiRefundsCountSubtitle').textContent = `${refundCount} refund${refundCount === 1 ? '' : 's'} (${refundRate}% of gross)`;
+
       document.getElementById('kpiAvgOrder').textContent = formatMoney(avgOrder);
+      document.getElementById('kpiAvgSubtitle').textContent = `Mean per order (${orderCount} total)`;
+
       document.getElementById('kpiMaxItem').textContent = formatMoney(maxItem.amount);
       document.getElementById('kpiMaxItemTitle').textContent = maxItem.title;
       document.getElementById('kpiMaxItemTitle').title = maxItem.title;
@@ -574,37 +1479,12 @@
         textColor: isDark ? '#94a3b8' : '#64748b',
         gridColor: isDark ? 'rgba(51, 65, 85, 0.4)' : 'rgba(226, 232, 240, 0.8)',
         amberMain: '#f59e0b',
-        amberLight: isDark ? 'rgba(245, 158, 11, 0.2)' : 'rgba(245, 158, 11, 0.15)',
-        trendLine: isDark ? '#f87171' : '#ef4444'
+        amberLight: isDark ? 'rgba(245, 158, 11, 0.25)' : 'rgba(245, 158, 11, 0.15)',
+        roseMain: '#f43f5e',
+        roseLight: isDark ? 'rgba(244, 63, 94, 0.25)' : 'rgba(244, 63, 94, 0.15)',
+        emeraldMain: '#10b981',
+        trendLine: isDark ? '#38bdf8' : '#0284c7'
       };
-    }
-
-    function calculateTrendLine(data) {
-      const n = data.length;
-      if (n === 0) return [];
-      if (n === 1) return [data[0]];
-
-      let sumX = 0;
-      let sumY = 0;
-      let sumXY = 0;
-      let sumXX = 0;
-
-      for (let i = 0; i < n; i++) {
-        sumX += i;
-        sumY += data[i];
-        sumXY += i * data[i];
-        sumXX += i * i;
-      }
-
-      const denominator = n * sumXX - sumX * sumX;
-      if (denominator === 0) {
-        return data.map(() => sumY / n);
-      }
-
-      const slope = (n * sumXY - sumX * sumY) / denominator;
-      const intercept = (sumY - slope * sumX) / n;
-
-      return data.map((_, i) => Math.max(0, +(slope * i + intercept).toFixed(2)));
     }
 
     function updateCharts() {
@@ -613,68 +1493,180 @@
       renderDayOfWeekChart();
     }
 
+    // Calculate linear regression trend line
+    function calculateTrendLine(data) {
+      const n = data.length;
+      if (n === 0) return [];
+      if (n === 1) return [data[0]];
+
+      let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+      for (let i = 0; i < n; i++) {
+        sumX += i;
+        sumY += data[i];
+        sumXY += i * data[i];
+        sumXX += i * i;
+      }
+
+      const denominator = n * sumXX - sumX * sumX;
+      if (denominator === 0) return data.map(() => sumY / n);
+
+      const slope = (n * sumXY - sumX * sumY) / denominator;
+      const intercept = (sumY - slope * sumX) / n;
+
+      return data.map((_, i) => Math.max(0, +(slope * i + intercept).toFixed(2)));
+    }
+
+    // Spending & Refunds Timeline Chart
     function renderTimelineChart() {
       const ctx = document.getElementById('timelineChart').getContext('2d');
       const theme = getChartThemeColors();
+      const isDark = document.documentElement.classList.contains('dark');
 
-      // Aggregate by Year-Month
+      // Filtered by active macro filters & category slice, but across all months
+      const timelineTransactions = getActiveFilteredTransactions({ ignoreTimelineMonth: true });
+
+      // Aggregate purchases and refunds per month
       const monthMap = {};
-      // Sort chronological
-      const chronological = [...filteredOrders].sort((a, b) => a.date - b.date);
+      const chronological = [...timelineTransactions].sort((a, b) => a.date - b.date);
 
-      chronological.forEach(o => {
-        const key = `${o.date.getFullYear()}-${String(o.date.getMonth() + 1).padStart(2, '0')}`;
-        monthMap[key] = (monthMap[key] || 0) + o.amount;
+      chronological.forEach(t => {
+        const key = `${t.date.getFullYear()}-${String(t.date.getMonth() + 1).padStart(2, '0')}`;
+        if (!monthMap[key]) {
+          monthMap[key] = { gross: 0, refunds: 0, net: 0 };
+        }
+        if (t.isRefund) {
+          monthMap[key].refunds += t.amount;
+        } else {
+          monthMap[key].gross += t.amount;
+        }
+        monthMap[key].net = monthMap[key].gross - monthMap[key].refunds;
       });
 
-      const labels = Object.keys(monthMap).map(k => {
+      const keys = Object.keys(monthMap);
+      const labels = keys.map(k => {
         const [y, m] = k.split('-');
-        const d = new Date(parseInt(y), parseInt(m) - 1, 1);
+        const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
         return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
       });
-      const dataValues = Object.values(monthMap);
-      const trendValues = calculateTrendLine(dataValues);
+
+      const grossValues = keys.map(k => monthMap[k].gross);
+      const refundValues = keys.map(k => monthMap[k].refunds);
+      const netValues = keys.map(k => monthMap[k].net);
+      const trendValues = calculateTrendLine(netValues);
 
       if (timelineChartInstance) {
         timelineChartInstance.destroy();
       }
 
+      const hasMonthSelection = Boolean(selectedTimelineMonth && keys.includes(selectedTimelineMonth));
+
+      const grossColors = keys.map(k => {
+        if (!hasMonthSelection || k === selectedTimelineMonth) {
+          return currentTimelineType === 'bar' ? theme.amberMain : theme.amberLight;
+        }
+        return isDark ? 'rgba(245, 158, 11, 0.18)' : 'rgba(245, 158, 11, 0.15)';
+      });
+
+      const grossBorderColors = keys.map(k => {
+        if (!hasMonthSelection || k === selectedTimelineMonth) {
+          return theme.amberMain;
+        }
+        return isDark ? 'rgba(245, 158, 11, 0.25)' : 'rgba(245, 158, 11, 0.25)';
+      });
+
+      const refundColors = keys.map(k => {
+        if (!hasMonthSelection || k === selectedTimelineMonth) {
+          return currentTimelineType === 'bar' ? theme.roseMain : theme.roseLight;
+        }
+        return isDark ? 'rgba(244, 63, 94, 0.18)' : 'rgba(244, 63, 94, 0.15)';
+      });
+
+      const refundBorderColors = keys.map(k => {
+        if (!hasMonthSelection || k === selectedTimelineMonth) {
+          return theme.roseMain;
+        }
+        return isDark ? 'rgba(244, 63, 94, 0.25)' : 'rgba(244, 63, 94, 0.25)';
+      });
+
+      const datasets = [
+        {
+          label: 'Purchases (Gross)',
+          data: grossValues,
+          backgroundColor: grossColors,
+          borderColor: grossBorderColors,
+          borderWidth: keys.map(k => (hasMonthSelection && k === selectedTimelineMonth) ? 3 : 2),
+          borderRadius: currentTimelineType === 'bar' ? 6 : 0,
+          fill: currentTimelineType === 'line',
+          tension: 0.35,
+          pointBackgroundColor: grossBorderColors,
+          pointRadius: keys.map(k => (hasMonthSelection && k === selectedTimelineMonth) ? 7 : (currentTimelineType === 'line' ? 3.5 : 0)),
+          pointHoverRadius: 6,
+          order: 3
+        },
+        {
+          label: 'Refunds',
+          data: refundValues,
+          backgroundColor: refundColors,
+          borderColor: refundBorderColors,
+          borderWidth: keys.map(k => (hasMonthSelection && k === selectedTimelineMonth) ? 3 : 2),
+          borderRadius: currentTimelineType === 'bar' ? 6 : 0,
+          fill: currentTimelineType === 'line',
+          tension: 0.35,
+          pointBackgroundColor: refundBorderColors,
+          pointRadius: keys.map(k => (hasMonthSelection && k === selectedTimelineMonth) ? 7 : (currentTimelineType === 'line' ? 3.5 : 0)),
+          pointHoverRadius: 6,
+          order: 2
+        },
+        {
+          type: 'line',
+          label: 'Net Spend Trend',
+          data: trendValues,
+          borderColor: theme.trendLine,
+          borderWidth: 2,
+          borderDash: [5, 5],
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          fill: false,
+          tension: 0,
+          order: 1
+        }
+      ];
+
       timelineChartInstance = new Chart(ctx, {
         type: currentTimelineType,
         data: {
           labels: labels,
-          datasets: [
-            {
-              label: 'Monthly Spending',
-              data: dataValues,
-              backgroundColor: currentTimelineType === 'bar' ? theme.amberMain : theme.amberLight,
-              borderColor: theme.amberMain,
-              borderWidth: 2,
-              borderRadius: currentTimelineType === 'bar' ? 6 : 0,
-              fill: currentTimelineType === 'line',
-              tension: 0.35,
-              pointBackgroundColor: theme.amberMain,
-              pointRadius: currentTimelineType === 'line' ? 4 : 0,
-              order: 2
-            },
-            {
-              type: 'line',
-              label: 'Trend Line',
-              data: trendValues,
-              borderColor: theme.trendLine,
-              borderWidth: 2,
-              borderDash: [6, 6],
-              pointRadius: 0,
-              pointHoverRadius: 4,
-              fill: false,
-              tension: 0,
-              order: 1
-            }
-          ]
+          datasets: datasets
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          onClick: (event, elements, chart) => {
+            let clickedIndex = -1;
+            if (elements && elements.length > 0) {
+              clickedIndex = elements[0].index;
+            } else if (chart) {
+              const activeElements = chart.getElementsAtEventForMode(event.native || event, 'nearest', { intersect: false }, true);
+              if (activeElements && activeElements.length > 0) {
+                clickedIndex = activeElements[0].index;
+              }
+            }
+            if (clickedIndex >= 0 && clickedIndex < keys.length) {
+              const clickedKey = keys[clickedIndex];
+              selectedTimelineMonth = (selectedTimelineMonth === clickedKey) ? null : clickedKey;
+              refreshAllWidgets();
+            }
+          },
+          onHover: (event, elements) => {
+            const target = event.native ? event.native.target : (event.chart ? event.chart.canvas : null);
+            if (target) {
+              target.style.cursor = (elements && elements.length > 0) ? 'pointer' : 'default';
+            }
+          },
           plugins: {
             legend: {
               display: true,
@@ -683,13 +1675,23 @@
               labels: {
                 color: theme.textColor,
                 boxWidth: 12,
-                font: { size: 11 }
+                font: { size: 11, family: 'Plus Jakarta Sans' }
               }
             },
             tooltip: {
               callbacks: {
                 label: function(context) {
                   return ` ${context.dataset.label}: ` + formatMoney(context.parsed.y);
+                },
+                afterBody: function(tooltipItems) {
+                  const idx = tooltipItems[0].dataIndex;
+                  const net = netValues[idx];
+                  const isSelected = selectedTimelineMonth === keys[idx];
+                  return [
+                    ` -------------------`,
+                    ` Net Spend: ` + formatMoney(net),
+                    isSelected ? ` (Currently selected - Click to clear)` : ` (Click to filter dashboard)`
+                  ];
                 }
               }
             }
@@ -712,26 +1714,62 @@
       });
     }
 
+    // Category Distribution Chart
     function renderCategoryChart() {
       const ctx = document.getElementById('categoryChart').getContext('2d');
       const theme = getChartThemeColors();
+      const isDark = document.documentElement.classList.contains('dark');
+
+      // Filtered by active macro filters & timeline month, but across all categories
+      const categoryTransactions = getActiveFilteredTransactions({ ignoreCategorySlice: true });
 
       const catMap = {};
-      filteredOrders.forEach(o => {
-        catMap[o.category] = (catMap[o.category] || 0) + o.amount;
+      categoryTransactions.forEach(t => {
+        if (!catMap[t.category]) catMap[t.category] = 0;
+        // Net spending by category
+        if (t.isRefund) {
+          catMap[t.category] -= t.amount;
+        } else {
+          catMap[t.category] += t.amount;
+        }
       });
 
-      const sortedCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+      // Filter out zero or negative net categories for donut chart display
+      const sortedCats = Object.entries(catMap)
+        .map(([cat, amt]) => [cat, Math.max(0, amt)])
+        .filter(c => c[1] > 0)
+        .sort((a, b) => b[1] - a[1]);
+
       const labels = sortedCats.map(c => c[0]);
       const dataValues = sortedCats.map(c => c[1]);
 
       const colors = [
-        '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#64748b'
+        '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#64748b', '#eab308', '#14b8a6'
       ];
 
       if (categoryChartInstance) {
         categoryChartInstance.destroy();
       }
+
+      const hasCategorySelection = Boolean(selectedCategorySlice && labels.includes(selectedCategorySlice));
+
+      const sliceColors = labels.map((l, i) => {
+        const baseColor = colors[i % colors.length];
+        if (!hasCategorySelection || l === selectedCategorySlice) {
+          return baseColor;
+        }
+        return baseColor + '33'; // Low opacity for unselected slices
+      });
+
+      const borderColors = labels.map(l => {
+        if (hasCategorySelection && l === selectedCategorySlice) {
+          return isDark ? '#fbbf24' : '#d97706';
+        }
+        return isDark ? '#0f172a' : '#ffffff';
+      });
+
+      const offsets = labels.map(l => (hasCategorySelection && l === selectedCategorySlice) ? 14 : 0);
+      const borderWidths = labels.map(l => (hasCategorySelection && l === selectedCategorySlice) ? 4 : 2);
 
       categoryChartInstance = new Chart(ctx, {
         type: 'doughnut',
@@ -739,29 +1777,64 @@
           labels: labels,
           datasets: [{
             data: dataValues,
-            backgroundColor: colors.slice(0, labels.length),
-            borderWidth: 2,
-            borderColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#ffffff'
+            backgroundColor: sliceColors,
+            borderColor: borderColors,
+            borderWidth: borderWidths,
+            offset: offsets
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          onClick: (event, elements, chart) => {
+            let clickedIndex = -1;
+            if (elements && elements.length > 0) {
+              clickedIndex = elements[0].index;
+            } else if (chart) {
+              const activeElements = chart.getElementsAtEventForMode(event.native || event, 'nearest', { intersect: true }, true);
+              if (activeElements && activeElements.length > 0) {
+                clickedIndex = activeElements[0].index;
+              }
+            }
+            if (clickedIndex >= 0 && clickedIndex < labels.length) {
+              const clickedCat = labels[clickedIndex];
+              selectedCategorySlice = (selectedCategorySlice === clickedCat) ? null : clickedCat;
+              refreshAllWidgets();
+            }
+          },
+          onHover: (event, elements) => {
+            const target = event.native ? event.native.target : (event.chart ? event.chart.canvas : null);
+            if (target) {
+              target.style.cursor = (elements && elements.length > 0) ? 'pointer' : 'default';
+            }
+          },
           plugins: {
             legend: {
               position: 'bottom',
+              onClick: (e, legendItem) => {
+                if (legendItem && legendItem.index !== undefined && legendItem.index < labels.length) {
+                  const clickedCat = labels[legendItem.index];
+                  selectedCategorySlice = (selectedCategorySlice === clickedCat) ? null : clickedCat;
+                  refreshAllWidgets();
+                }
+              },
               labels: {
                 color: theme.textColor,
-                boxWidth: 12,
-                font: { size: 11 }
+                boxWidth: 10,
+                font: { size: 10, family: 'Plus Jakarta Sans' }
               }
             },
             tooltip: {
               callbacks: {
                 label: function(context) {
                   const total = dataValues.reduce((a, b) => a + b, 0);
-                  const pct = ((context.parsed / total) * 100).toFixed(1);
+                  const pct = total > 0 ? ((context.parsed / total) * 100).toFixed(1) : '0';
                   return ` ${context.label}: ${formatMoney(context.parsed)} (${pct}%)`;
+                },
+                afterBody: function(tooltipItems) {
+                  const idx = tooltipItems[0].dataIndex;
+                  const isSelected = selectedCategorySlice === labels[idx];
+                  return isSelected ? [`(Currently selected - Click to clear)`] : [`(Click to filter dashboard)`];
                 }
               }
             }
@@ -771,16 +1844,19 @@
       });
     }
 
+    // Day of Week Spending Chart
     function renderDayOfWeekChart() {
       const ctx = document.getElementById('dayOfWeekChart').getContext('2d');
       const theme = getChartThemeColors();
 
-      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       const dayTotals = [0, 0, 0, 0, 0, 0, 0];
+      const activeTransactions = getActiveFilteredTransactions();
 
-      filteredOrders.forEach(o => {
-        const dayIdx = o.date.getDay();
-        dayTotals[dayIdx] += o.amount;
+      activeTransactions.forEach(t => {
+        if (!t.isRefund) {
+          const dayIdx = t.date.getDay();
+          dayTotals[dayIdx] += t.amount;
+        }
       });
 
       if (dayOfWeekChartInstance) {
@@ -792,7 +1868,7 @@
         data: {
           labels: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
           datasets: [{
-            label: 'Total Spend',
+            label: 'Purchases Total',
             data: dayTotals,
             backgroundColor: '#3b82f6',
             borderRadius: 6
@@ -806,7 +1882,7 @@
             tooltip: {
               callbacks: {
                 label: function(context) {
-                  return ' ' + formatMoney(context.parsed.y);
+                  return ' Total: ' + formatMoney(context.parsed.y);
                 }
               }
             }
@@ -829,63 +1905,239 @@
       });
     }
 
-    function renderTopItems() {
-      const container = document.getElementById('topItemsList');
-      const topItems = [...filteredOrders].sort((a, b) => b.amount - a.amount).slice(0, 5);
+    // Render Highlights: Top Purchases and Top Refunds
+    function renderHighlights() {
+      const activeTransactions = getActiveFilteredTransactions();
+      // Top 5 Purchases
+      const topPurchasesContainer = document.getElementById('topItemsList');
+      const topPurchases = activeTransactions
+        .filter(t => !t.isRefund)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5);
 
-      if (topItems.length === 0) {
-        container.innerHTML = '<p class="text-xs text-slate-400">No items available.</p>';
-        return;
+      if (topPurchases.length === 0) {
+        topPurchasesContainer.innerHTML = '<p class="text-xs text-slate-400 py-4 text-center">No purchases recorded.</p>';
+      } else {
+        topPurchasesContainer.innerHTML = topPurchases.map((item, idx) => {
+          const articleUrl = getAmazonArticleUrl(item.asin, item.title, item.domain);
+          const orderUrl = getAmazonOrderUrl(item.orderId, item.domain);
+          const titleHtml = articleUrl
+            ? `<a href="${articleUrl}" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-slate-900 dark:text-slate-100 hover:text-amber-600 dark:hover:text-amber-400 hover:underline truncate inline-flex items-center gap-1" title="View product on Amazon: ${escapeHtml(item.title)}"><span class="truncate">${escapeHtml(item.title)}</span><i data-lucide="external-link" class="w-2.5 h-2.5 opacity-50 shrink-0"></i></a>`
+            : `<p class="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</p>`;
+          
+          const orderMeta = orderUrl
+            ? `<a href="${orderUrl}" target="_blank" rel="noopener noreferrer" class="hover:text-amber-600 dark:hover:text-amber-400 hover:underline inline-flex items-center gap-0.5" title="View order #${escapeHtml(item.orderId)} on Amazon">#${escapeHtml(item.orderId)}</a>`
+            : (item.orderId ? `#${escapeHtml(item.orderId)}` : escapeHtml(item.category));
+
+          return `
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+              <div class="flex items-center space-x-2.5 overflow-hidden mr-2">
+                <span class="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-bold text-[10px] flex items-center justify-center shrink-0">
+                  ${idx + 1}
+                </span>
+                <div class="truncate">
+                  ${titleHtml}
+                  <p class="text-[10px] text-slate-400">${item.date.toLocaleDateString()} &bull; ${orderMeta}</p>
+                </div>
+              </div>
+              <span class="text-xs font-bold text-slate-900 dark:text-white shrink-0">
+                ${formatMoney(item.amount)}
+              </span>
+            </div>
+          `;
+        }).join('');
       }
 
-      container.innerHTML = topItems.map((item, idx) => `
-        <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-          <div class="flex items-center space-x-3 overflow-hidden mr-2">
-            <span class="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-bold text-xs flex items-center justify-center shrink-0">
-              ${idx + 1}
-            </span>
-            <div class="truncate">
-              <p class="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate" title="${item.title}">${item.title}</p>
-              <p class="text-[10px] text-slate-400">${item.date.toLocaleDateString()} &bull; ${item.category}</p>
+      // Top 5 Refunds
+      const topRefundsContainer = document.getElementById('topRefundsList');
+      const topRefunds = activeTransactions
+        .filter(t => t.isRefund)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5);
+
+      if (topRefunds.length === 0) {
+        topRefundsContainer.innerHTML = '<p class="text-xs text-slate-400 py-4 text-center">No refunds or returns recorded.</p>';
+      } else {
+        topRefundsContainer.innerHTML = topRefunds.map((item, idx) => {
+          const articleUrl = getAmazonArticleUrl(item.asin, item.title, item.domain);
+          const orderUrl = getAmazonOrderUrl(item.orderId, item.domain);
+          const titleHtml = articleUrl
+            ? `<a href="${articleUrl}" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-slate-900 dark:text-slate-100 hover:text-amber-600 dark:hover:text-amber-400 hover:underline truncate inline-flex items-center gap-1" title="View product on Amazon: ${escapeHtml(item.title)}"><span class="truncate">${escapeHtml(item.title)}</span><i data-lucide="external-link" class="w-2.5 h-2.5 opacity-50 shrink-0"></i></a>`
+            : `<p class="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</p>`;
+          
+          const orderMeta = orderUrl
+            ? `<a href="${orderUrl}" target="_blank" rel="noopener noreferrer" class="hover:text-amber-600 dark:hover:text-amber-400 hover:underline inline-flex items-center gap-0.5" title="View order #${escapeHtml(item.orderId)} on Amazon">#${escapeHtml(item.orderId)}</a>`
+            : (item.orderId ? `#${escapeHtml(item.orderId)}` : escapeHtml(item.category));
+
+          return `
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+              <div class="flex items-center space-x-2.5 overflow-hidden mr-2">
+                <span class="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-bold text-[10px] flex items-center justify-center shrink-0">
+                  ${idx + 1}
+                </span>
+                <div class="truncate">
+                  ${titleHtml}
+                  <p class="text-[10px] text-slate-400">${item.date.toLocaleDateString()} &bull; ${orderMeta}</p>
+                </div>
+              </div>
+              <span class="text-xs font-bold text-slate-900 dark:text-white shrink-0">
+                ${formatMoney(item.amount)}
+              </span>
             </div>
-          </div>
-          <span class="text-xs font-extrabold text-slate-900 dark:text-white shrink-0">
-            ${formatMoney(item.amount)}
-          </span>
-        </div>
-      `).join('');
+          `;
+        }).join('');
+      }
+
+      lucide.createIcons();
     }
 
+    // Render Ledger Table
     function renderTable() {
-      const search = document.getElementById('tableSearchInput').value.toLowerCase();
+      const search = document.getElementById('tableSearchInput').value.toLowerCase().trim();
       const tbody = document.getElementById('ordersTableBody');
-      
-      const rows = filteredOrders.filter(o => {
+
+      const ledgerTransactions = getLedgerTransactions();
+
+      const rows = ledgerTransactions.filter(t => {
         if (!search) return true;
-        return o.title.toLowerCase().includes(search) || 
-               o.category.toLowerCase().includes(search) ||
-               o.date.toLocaleDateString().includes(search);
+        return t.title.toLowerCase().includes(search) ||
+               t.category.toLowerCase().includes(search) ||
+               (t.orderId && t.orderId.toLowerCase().includes(search)) ||
+               (t.asin && t.asin.toLowerCase().includes(search)) ||
+               (t.reason && t.reason.toLowerCase().includes(search)) ||
+               t.date.toLocaleDateString().includes(search);
       });
 
-      document.getElementById('tableResultsCount').textContent = `Showing ${rows.length} of ${filteredOrders.length} orders`;
+      let filterDetails = [];
+      if (selectedTimelineMonth) filterDetails.push(`Month: ${formatMonthKey(selectedTimelineMonth)}`);
+      if (selectedCategorySlice) filterDetails.push(`Category: ${selectedCategorySlice}`);
+      const filterDesc = filterDetails.length > 0 ? ` [Filtered by ${filterDetails.join(' & ')}]` : '';
+
+      document.getElementById('tableResultsCount').textContent = `Showing ${Math.min(rows.length, 150)} of ${rows.length} matching transactions${filterDesc}`;
 
       if (rows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-6 text-slate-400 text-xs">No matching orders found.</td></tr>`;
+        const emptyNotice = filterDetails.length > 0
+          ? `No transactions match the selected chart filter (${filterDetails.join(', ')}).`
+          : 'No matching transactions found.';
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-slate-400 text-xs">${emptyNotice}</td></tr>`;
         return;
       }
 
-      tbody.innerHTML = rows.slice(0, 100).map(o => `
-        <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-          <td class="py-3 px-4 text-xs text-slate-500 whitespace-nowrap">${o.date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
-          <td class="py-3 px-4 text-xs font-medium text-slate-900 dark:text-slate-100 max-w-xs truncate" title="${o.title}">${o.title}</td>
-          <td class="py-3 px-4 text-xs">
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              ${o.category}
-            </span>
-          </td>
-          <td class="py-3 px-4 text-xs font-bold text-right text-slate-900 dark:text-white whitespace-nowrap">${formatMoney(o.amount)}</td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = rows.slice(0, 150).map(t => {
+        const typeBadge = t.isRefund
+          ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40"><i data-lucide="undo-2" class="w-3 h-3"></i> Refund</span>`
+          : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40"><i data-lucide="shopping-cart" class="w-3 h-3"></i> Order</span>`;
+
+        const amountFormatted = t.isRefund
+          ? `<span class="font-bold text-slate-900 dark:text-white">-${formatMoney(t.amount)}</span>`
+          : `<span class="font-bold text-slate-900 dark:text-white">${formatMoney(t.amount)}</span>`;
+
+        const orderUrl = getAmazonOrderUrl(t.orderId, t.domain);
+        const orderCellContent = orderUrl
+          ? `<a href="${orderUrl}" target="_blank" rel="noopener noreferrer" class="hover:text-amber-600 dark:hover:text-amber-400 hover:underline inline-flex items-center gap-1 font-mono text-[11px] text-slate-600 dark:text-slate-300 transition" title="View order on Amazon: ${escapeHtml(t.orderId)}">${escapeHtml(t.orderId)} <i data-lucide="external-link" class="w-3 h-3 opacity-60"></i></a>`
+          : `<span class="font-mono text-slate-400 text-[11px]">-</span>`;
+
+        const articleUrl = getAmazonArticleUrl(t.asin, t.title, t.domain);
+        const titleCellContent = articleUrl
+          ? `<a href="${articleUrl}" target="_blank" rel="noopener noreferrer" class="hover:text-amber-600 dark:hover:text-amber-400 hover:underline inline-flex items-center gap-1.5 max-w-xs truncate transition text-slate-900 dark:text-slate-100 font-medium" title="View product on Amazon: ${escapeHtml(t.title)}"><span class="truncate">${escapeHtml(t.title)}</span><i data-lucide="external-link" class="w-3 h-3 opacity-50 shrink-0"></i></a>`
+          : `<span class="font-medium text-slate-900 dark:text-slate-100 max-w-xs truncate" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</span>`;
+
+        return `
+          <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+            <td class="py-3 px-4 text-xs text-slate-500 whitespace-nowrap">${t.date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+            <td class="py-3 px-4 text-xs whitespace-nowrap">${typeBadge}</td>
+            <td class="py-3 px-4 text-xs whitespace-nowrap">${orderCellContent}</td>
+            <td class="py-3 px-4 text-xs">${titleCellContent}</td>
+            <td class="py-3 px-4 text-xs whitespace-nowrap">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                ${escapeHtml(t.category)}
+              </span>
+            </td>
+            <td class="py-3 px-4 text-xs text-right whitespace-nowrap">${amountFormatted}</td>
+          </tr>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    // Export current filtered view to CSV
+    function exportCurrentViewToCSV() {
+      const currentExportTransactions = getLedgerTransactions();
+      if (currentExportTransactions.length === 0) {
+        alert('No data to export.');
+        return;
+      }
+
+      const csvRows = currentExportTransactions.map(t => ({
+        'Date': t.date.toISOString().split('T')[0],
+        'Type': t.isRefund ? 'Refund' : 'Order',
+        'Order ID': t.orderId || '',
+        'Title / Item': t.title,
+        'Category': t.category,
+        'Amount': t.isRefund ? -t.amount : t.amount,
+        'ASIN': t.asin || '',
+        'Refund Reason': t.reason || ''
+      }));
+
+      const csvString = Papa.unparse(csvRows);
+      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Amazon_Transactions_Export_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // Load rich sample dataset demonstrating orders and refunds
+    function loadSampleData() {
+      const sampleOrders = [
+        { "Order ID": "114-8920194-4820192", "Order Date": "2024-01-12", "Product Name": "Sony WH-1000XM5 Wireless Noise Canceling Headphones", "Total Charged": "$348.00", "Category": "Electronics & Tech", "ASIN": "B09XS7JWHH" },
+        { "Order ID": "114-3829103-9182301", "Order Date": "2024-01-20", "Product Name": "Nespresso VertuoPlus Coffee and Espresso Machine", "Total Charged": "$159.95", "Category": "Home & Kitchen", "ASIN": "B01N7T9Z7S" },
+        { "Order ID": "114-5928104-1829402", "Order Date": "2024-02-05", "Product Name": "Atomic Habits by James Clear (Hardcover)", "Total Charged": "$14.99", "Category": "Books & Media", "ASIN": "0735211299" },
+        { "Order ID": "114-9182049-8192048", "Order Date": "2024-02-14", "Product Name": "Anker USB C Charger 65W Fast Charger PIQ 3.0", "Total Charged": "$39.99", "Category": "Electronics & Tech", "ASIN": "B08T5QN2TR" },
+        { "Order ID": "114-2910482-0194820", "Order Date": "2024-02-28", "Product Name": "Organic Whole Bean Dark Roast Coffee 2lb", "Total Charged": "$24.50", "Category": "Grocery & Health", "ASIN": "B079D8GFWJ" },
+        { "Order ID": "114-0194829-9182049", "Order Date": "2024-03-08", "Product Name": "Ergonomic Office High-Back Mesh Chair", "Total Charged": "$219.00", "Category": "Home & Kitchen", "ASIN": "B00IIFW2L4" },
+        { "Order ID": "114-7291048-1829401", "Order Date": "2024-03-15", "Product Name": "Running Shoes Men Lightweight Breathable - Size 10.5", "Total Charged": "$85.00", "Category": "Clothing & Apparel", "ASIN": "B08NXTPN88" },
+        { "Order ID": "114-6192840-0194829", "Order Date": "2024-04-02", "Product Name": "Apple MagSafe Battery Pack", "Total Charged": "$99.00", "Category": "Electronics & Tech", "ASIN": "B099BWY7WT" },
+        { "Order ID": "114-4820194-7192048", "Order Date": "2024-04-22", "Product Name": "Hydro Flask 32 oz Wide Mouth Insulated Bottle", "Total Charged": "$44.95", "Category": "Home & Kitchen", "ASIN": "B07XQ93R6V" },
+        { "Order ID": "114-1928401-2910482", "Order Date": "2024-05-10", "Product Name": "LG 27-inch 4K UHD UltraFine IPS Monitor with USB-C", "Total Charged": "$396.99", "Category": "Electronics & Tech", "ASIN": "B07YGZ7C1K" },
+        { "Order ID": "114-3019482-8192041", "Order Date": "2024-05-18", "Product Name": "Stainless Steel Kitchen Chef Knife Set 8-Piece", "Total Charged": "$69.99", "Category": "Home & Kitchen", "ASIN": "B00004RFMT" },
+        { "Order ID": "114-8192048-2910482", "Order Date": "2024-06-01", "Product Name": "Designing Data-Intensive Applications by Martin Kleppmann", "Total Charged": "$45.50", "Category": "Books & Media", "ASIN": "1449373321" },
+        { "Order ID": "114-5192048-0194820", "Order Date": "2024-06-15", "Product Name": "Sonic Electric Toothbrush with 4 Brush Heads", "Total Charged": "$59.99", "Category": "Beauty & Personal Care", "ASIN": "B0892B1MZX" },
+        { "Order ID": "114-9402910-1829402", "Order Date": "2024-07-04", "Product Name": "Kindle Paperwhite (16 GB) 6.8 inch Display", "Total Charged": "$149.99", "Category": "Electronics & Tech", "ASIN": "B08KTZ8249" },
+        { "Order ID": "114-2840192-9182041", "Order Date": "2024-07-20", "Product Name": "Whey Protein Isolate Vanilla Flavor 5lb", "Total Charged": "$74.99", "Category": "Grocery & Health", "ASIN": "B000QSNYGI" },
+        { "Order ID": "D01-9284019-1829402", "Order Date": "2024-08-05", "Product Name": "Dune: Part Two (4K UHD Digital Purchase)", "Total Charged": "$19.99", "Category": "Books & Media", "ASIN": "B0CY9KQLMZ" },
+        { "Order ID": "114-7182940-1928401", "Order Date": "2024-08-14", "Product Name": "Logitech MX Master 3S Wireless Performance Mouse", "Total Charged": "$99.99", "Category": "Electronics & Tech", "ASIN": "B09HM94VDS" },
+        { "Order ID": "114-0192840-8192049", "Order Date": "2023-11-24", "Product Name": "Apple MacBook Air 13-inch M2 (8GB RAM, 256GB SSD)", "Total Charged": "$999.00", "Category": "Electronics & Tech", "ASIN": "B0B3C58S11" },
+        { "Order ID": "114-9182041-0194829", "Order Date": "2023-12-05", "Product Name": "LEGO Star Wars Millennium Falcon Building Set", "Total Charged": "$169.99", "Category": "Toys & Gaming", "ASIN": "B07NDY84VD" },
+        { "Order ID": "114-4820192-7192041", "Order Date": "2023-12-18", "Product Name": "Merino Wool Winter Beanie & Scarf Set", "Total Charged": "$48.00", "Category": "Clothing & Apparel", "ASIN": "B07H83L1PZ" }
+      ];
+
+      const sampleRefunds = [
+        { "Order ID": "114-7291048-1829401", "Refund Date": "2024-03-22", "Refund Amount": "$85.00", "Refund Reason": "Size did not fit, returned", "Product Name": "Running Shoes Men Lightweight Breathable - Size 10.5", "Category": "Clothing & Apparel" },
+        { "Order ID": "114-9182049-8192048", "Refund Date": "2024-02-20", "Refund Amount": "$39.99", "Refund Reason": "Defective item returned", "Product Name": "Anker USB C Charger 65W Fast Charger PIQ 3.0", "Category": "Electronics & Tech" },
+        { "Order ID": "114-4820192-7192041", "Refund Date": "2023-12-28", "Refund Amount": "$48.00", "Refund Reason": "Color not as expected", "Product Name": "Merino Wool Winter Beanie & Scarf Set", "Category": "Clothing & Apparel" }
+      ];
+
+      importSummary = {
+        sourceName: 'Amazon_Your_Orders_Export_Sample.zip',
+        filesProcessed: [
+          { name: 'Retail.OrderHistory.1.csv', ordersCount: 19, refundsCount: 0 },
+          { name: 'Digital-Items.csv', ordersCount: 1, refundsCount: 0 },
+          { name: 'Retail.Refunds.1.csv', ordersCount: 0, refundsCount: 2 },
+          { name: 'Retail.CustomerReturns.1.csv', ordersCount: 0, refundsCount: 1 }
+        ],
+        totalOrders: sampleOrders.length,
+        totalRefunds: sampleRefunds.length
+      };
+
+      const normalizedOrders = sampleOrders.map(normalizeOrderRow);
+      const normalizedRefunds = sampleRefunds.map(normalizeRefundRow);
+
+      processExtractedData(normalizedOrders, normalizedRefunds);
     }
   </script>
 </body>
