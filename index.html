@@ -1474,7 +1474,7 @@
 
       const datasets = [
         {
-          label: 'Purchases (Gross)',
+          label: 'Purchases ',
           data: grossValues,
           backgroundColor: grossColors,
           borderColor: grossBorderColors,
@@ -1485,7 +1485,7 @@
           pointBackgroundColor: grossBorderColors,
           pointRadius: keys.map(k => (hasMonthSelection && k === selectedTimelineMonth) ? 7 : (currentTimelineType === 'line' ? 3.5 : 0)),
           pointHoverRadius: 6,
-          order: 3
+          order: 1
         },
         {
           label: 'Refunds',
@@ -1512,8 +1512,8 @@
           pointHoverRadius: 4,
           fill: false,
           tension: 0,
-          order: 1
-        }
+          order: 3
+        },
       ];
 
       timelineChartInstance = new Chart(ctx, {
