@@ -220,14 +220,6 @@
               </select>
             </div>
 
-            <!-- Category Filter -->
-            <div class="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
-              <i data-lucide="tag" class="w-4 h-4 text-amber-500"></i>
-              <span class="font-semibold">Category:</span>
-              <select id="categoryFilter" class="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium">
-                <option value="ALL">All Categories</option>
-              </select>
-            </div>
           </div>
 
           <!-- Quick Stats & Actions -->
@@ -252,10 +244,6 @@
             <span id="ledgerTimelineFilterBadge" class="hidden inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40">
               <span>Month: <strong id="ledgerTimelineFilterValue"></strong></span>
               <button id="clearTimelineFilterBtn" class="hover:text-amber-950 dark:hover:text-white p-0.5" title="Remove month filter">&times;</button>
-            </span>
-            <span id="ledgerCategoryFilterBadge" class="hidden inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40">
-              <span>Category: <strong id="ledgerCategoryFilterValue"></strong></span>
-              <button id="clearCategoryFilterBtn" class="hover:text-blue-950 dark:hover:text-white p-0.5" title="Remove category filter">&times;</button>
             </span>
           </div>
           <button id="clearAllChartFiltersBtn" class="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1">
@@ -330,10 +318,10 @@
       </section>
 
       <!-- Main Visual Charts Grid -->
-      <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <section class="grid grid-cols-1 gap-6">
         
         <!-- Monthly Spending Timeline -->
-        <div class="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
               <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -351,22 +339,6 @@
           </div>
           <div class="relative h-72 sm:h-80 w-full">
             <canvas id="timelineChart"></canvas>
-          </div>
-        </div>
-
-        <!-- Category Breakdown -->
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
-          <div class="mb-4">
-            <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              Spend by Category
-              <span id="categorySelectionBadge" class="hidden text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900/60 transition" title="Click to clear category selection">
-                <span id="categorySelectionText"></span> &times;
-              </span>
-            </h3>
-            <p class="text-xs text-slate-400">Net spending across product departments &bull; <span class="text-blue-600 dark:text-blue-400 font-medium">Click slice to filter dashboard</span></p>
-          </div>
-          <div class="relative h-72 sm:h-80 w-full flex items-center justify-center">
-            <canvas id="categoryChart"></canvas>
           </div>
         </div>
 
@@ -439,7 +411,6 @@
                 <th class="py-3 px-4">Type</th>
                 <th class="py-3 px-4">Order ID</th>
                 <th class="py-3 px-4">Title / Item &amp; Reason</th>
-                <th class="py-3 px-4">Category</th>
                 <th class="py-3 px-4 text-right">Amount</th>
               </tr>
             </thead>
@@ -476,11 +447,9 @@
 
     // Chart Instances & Options
     let timelineChartInstance = null;
-    let categoryChartInstance = null;
     let dayOfWeekChartInstance = null;
     let currentTimelineType = 'bar';
     let selectedTimelineMonth = null; // Filter ledger by clicked month key (e.g. '2024-03')
-    let selectedCategorySlice = null; // Filter ledger by clicked category name
 
     // Theme Toggle
     const themeToggle = document.getElementById('themeToggle');
@@ -593,23 +562,6 @@
         }
       }
       return null;
-    }
-
-    // Helper: Categorization heuristic
-    function inferCategory(title) {
-      if (!title) return 'General Goods';
-      const t = title.toLowerCase();
-      if (t.match(/cable|charger|usb|adapter|phone|laptop|mouse|keyboard|monitor|ssd|drive|headphone|earbud|airpods|battery|anker|apple|samsung|electronics|tv|camera|speaker|router|hdmi|power bank|kindle paperwhite|fire tv/)) return 'Electronics & Tech';
-      if (t.match(/book|paperback|hardcover|kindle|novel|edition|guide|manual|textbook|audiobook|audible|ebook/)) return 'Books & Media';
-      if (t.match(/shirt|pant|shoe|sock|jacket|hat|dress|hoodie|clothing|sneaker|jean|apparel|sweater|boot|underwear|coat|glove|belt/)) return 'Clothing & Apparel';
-      if (t.match(/coffee|tea|snack|protein|vitamin|supplement|food|organic|drink|chocolate|grocery|cereal|nuts|bar|pasta|sauce/)) return 'Grocery & Health';
-      if (t.match(/kitchen|pan|pot|blender|towel|cleaner|detergent|pillow|sheet|home|chair|desk|lamp|cookware|knife|air fryer|vacuum|curtain|mug|bedding/)) return 'Home & Kitchen';
-      if (t.match(/shampoo|soap|lotion|cream|toothbrush|paste|razor|grooming|beauty|cosmetic|perfume|cologne|sunscreen|serum|makeup/)) return 'Beauty & Personal Care';
-      if (t.match(/game|toy|puzzle|lego|nintendo|playstation|xbox|board game|action figure|doll|controller/)) return 'Toys & Gaming';
-      if (t.match(/fitness|gym|dumbbell|yoga|bike|sports|outdoor|tent|hiking|running|camp|golf|swim/)) return 'Sports & Outdoors';
-      if (t.match(/pet|dog|cat|litter|kibble|leash|aquarium|collar|chew/)) return 'Pet Supplies';
-      if (t.match(/tool|drill|screw|hammer|wrench|repair|hardware|light bulb|tape|paint|garden|lawn|hose/)) return 'Tools & Home Improvement';
-      return 'General Goods';
     }
 
     // Helper: Format currency string
@@ -1039,19 +991,6 @@
         }
       }
 
-      // Category detection
-      const categoryKeys = ['Category', 'Product Category', 'UNSPSC Code', 'category', 'Department'];
-      let categoryVal = null;
-      for (const k of categoryKeys) {
-        if (row[k] && row[k].toString().trim().length > 0) {
-          categoryVal = row[k].toString().trim();
-          break;
-        }
-      }
-      if (!categoryVal) {
-        categoryVal = inferCategory(titleVal);
-      }
-
       const orderId = getOrderIdFromRow(row);
       const asin = row['ASIN'] || row['asin'] || row['ASIN/ISBN'] || '';
       const domain = detectDomainFromRow(row, fileHint);
@@ -1062,7 +1001,6 @@
         date: dateVal,
         amount: amountVal,
         title: titleVal,
-        category: categoryVal,
         orderId: orderId,
         asin: asin,
         domain: domain,
@@ -1109,16 +1047,6 @@
       const asin = row['ASIN'] || row['asin'] || '';
       const domain = detectDomainFromRow(row, fileHint);
 
-      // Category detection
-      const categoryKeys = ['Category', 'Product Category', 'UNSPSC Code', 'category'];
-      let categoryVal = null;
-      for (const k of categoryKeys) {
-        if (row[k] && row[k].toString().trim().length > 0) {
-          categoryVal = row[k].toString().trim();
-          break;
-        }
-      }
-
       return {
         type: 'REFUND',
         isRefund: true,
@@ -1126,7 +1054,6 @@
         amount: amountVal,
         title: titleVal,
         reason: reasonVal,
-        category: categoryVal,
         orderId: orderId,
         asin: asin,
         domain: domain,
@@ -1136,7 +1063,7 @@
 
     // Process and correlate orders with refunds
     function processExtractedData(orders, refunds) {
-      // Build order lookup map by Order ID for fast refund title & category enrichment
+      // Build order lookup map by Order ID for fast refund title enrichment
       const orderMap = new Map();
       orders.forEach(o => {
         if (o.orderId) {
@@ -1150,7 +1077,6 @@
       // Enrich refunds with matched order data if missing
       const enrichedRefunds = refunds.map(ref => {
         let title = ref.title;
-        let category = ref.category;
         let asin = ref.asin;
         let domain = ref.domain;
 
@@ -1159,9 +1085,6 @@
           const matched = matchedOrders[0];
           if (!title && matched) {
             title = `Refund: ${matched.title}`;
-          }
-          if (!category && matched) {
-            category = matched.category;
           }
           if (!asin && matched && matched.asin) {
             asin = matched.asin;
@@ -1177,14 +1100,10 @@
         if (ref.reason && !title.toLowerCase().includes(ref.reason.toLowerCase())) {
           title = `${title} (${ref.reason})`;
         }
-        if (!category) {
-          category = inferCategory(title);
-        }
 
         return {
           ...ref,
           title,
-          category,
           asin,
           domain: domain || 'amazon.com'
         };
@@ -1197,7 +1116,6 @@
       allTransactions = [...rawOrders, ...rawRefunds].sort((a, b) => b.date - a.date);
 
       selectedTimelineMonth = null;
-      selectedCategorySlice = null;
 
       populateFilterOptions();
       updateImportSummaryCard();
@@ -1220,11 +1138,9 @@
     function getActiveFilteredTransactions(options = {}) {
       const yearFilter = document.getElementById('yearFilter');
       const typeFilter = document.getElementById('typeFilter');
-      const categoryFilter = document.getElementById('categoryFilter');
 
       const selectedYear = yearFilter ? yearFilter.value : 'ALL';
       const selectedType = typeFilter ? typeFilter.value : 'ALL';
-      const selectedCategory = categoryFilter ? categoryFilter.value : 'ALL';
 
       return allTransactions.filter(t => {
         // Macro Year filter
@@ -1234,18 +1150,10 @@
         // Macro Type filter
         if (selectedType === 'ORDERS' && t.isRefund) return false;
         if (selectedType === 'REFUNDS' && !t.isRefund) return false;
-        // Macro Category filter
-        if (selectedCategory !== 'ALL' && t.category !== selectedCategory) {
-          return false;
-        }
         // Active Chart Month Filter (unless excluded by caller, e.g. timeline chart rendering)
         if (!options.ignoreTimelineMonth && selectedTimelineMonth) {
           const monthKey = `${t.date.getFullYear()}-${String(t.date.getMonth() + 1).padStart(2, '0')}`;
           if (monthKey !== selectedTimelineMonth) return false;
-        }
-        // Active Chart Category Filter (unless excluded by caller, e.g. category chart rendering)
-        if (!options.ignoreCategorySlice && selectedCategorySlice) {
-          if (t.category !== selectedCategorySlice) return false;
         }
         return true;
       });
@@ -1260,14 +1168,10 @@
     function updateChartSelectionUI() {
       const timelineBadge = document.getElementById('timelineSelectionBadge');
       const timelineText = document.getElementById('timelineSelectionText');
-      const categoryBadge = document.getElementById('categorySelectionBadge');
-      const categoryText = document.getElementById('categorySelectionText');
 
       const activeBar = document.getElementById('activeChartFilterBar');
       const ledgerTimelineBadge = document.getElementById('ledgerTimelineFilterBadge');
       const ledgerTimelineVal = document.getElementById('ledgerTimelineFilterValue');
-      const ledgerCatBadge = document.getElementById('ledgerCategoryFilterBadge');
-      const ledgerCatVal = document.getElementById('ledgerCategoryFilterValue');
 
       if (selectedTimelineMonth) {
         const formatted = formatMonthKey(selectedTimelineMonth);
@@ -1284,22 +1188,8 @@
         if (ledgerTimelineBadge) ledgerTimelineBadge.classList.add('hidden');
       }
 
-      if (selectedCategorySlice) {
-        if (categoryBadge) {
-          categoryBadge.classList.remove('hidden');
-          categoryText.textContent = selectedCategorySlice;
-        }
-        if (ledgerCatBadge) {
-          ledgerCatBadge.classList.remove('hidden');
-          ledgerCatVal.textContent = selectedCategorySlice;
-        }
-      } else {
-        if (categoryBadge) categoryBadge.classList.add('hidden');
-        if (ledgerCatBadge) ledgerCatBadge.classList.add('hidden');
-      }
-
       if (activeBar) {
-        if (selectedTimelineMonth || selectedCategorySlice) {
+        if (selectedTimelineMonth) {
           activeBar.classList.remove('hidden');
         } else {
           activeBar.classList.add('hidden');
@@ -1339,10 +1229,9 @@
       lucide.createIcons();
     }
 
-    // Populate Year and Category filter dropdowns
+    // Populate Year filter dropdown
     function populateFilterOptions() {
       const yearFilter = document.getElementById('yearFilter');
-      const categoryFilter = document.getElementById('categoryFilter');
 
       const years = Array.from(new Set(allTransactions.map(t => t.date.getFullYear()))).sort((a, b) => b - a);
       yearFilter.innerHTML = '<option value="ALL">All Years</option>';
@@ -1352,21 +1241,11 @@
         opt.textContent = yr;
         yearFilter.appendChild(opt);
       });
-
-      const categories = Array.from(new Set(allTransactions.map(t => t.category))).sort();
-      categoryFilter.innerHTML = '<option value="ALL">All Categories</option>';
-      categories.forEach(cat => {
-        const opt = document.createElement('option');
-        opt.value = cat;
-        opt.textContent = cat;
-        categoryFilter.appendChild(opt);
-      });
     }
 
     // Filter Listeners
     document.getElementById('yearFilter').addEventListener('change', applyFilters);
     document.getElementById('typeFilter').addEventListener('change', applyFilters);
-    document.getElementById('categoryFilter').addEventListener('change', applyFilters);
     document.getElementById('tableSearchInput').addEventListener('input', renderTable);
 
     // Chart Filter Clear Listeners
@@ -1380,19 +1259,8 @@
       refreshAllWidgets();
     });
 
-    document.getElementById('clearCategoryFilterBtn')?.addEventListener('click', () => {
-      selectedCategorySlice = null;
-      refreshAllWidgets();
-    });
-
-    document.getElementById('categorySelectionBadge')?.addEventListener('click', () => {
-      selectedCategorySlice = null;
-      refreshAllWidgets();
-    });
-
     document.getElementById('clearAllChartFiltersBtn')?.addEventListener('click', () => {
       selectedTimelineMonth = null;
-      selectedCategorySlice = null;
       refreshAllWidgets();
     });
 
@@ -1423,18 +1291,12 @@
     // Apply active filters across all views
     function applyFilters() {
       const selectedYear = document.getElementById('yearFilter').value;
-      const selectedCategory = document.getElementById('categoryFilter').value;
 
       // Synchronize chart selections when macro filters change
       if (selectedTimelineMonth && selectedYear !== 'ALL') {
         const [selYear] = selectedTimelineMonth.split('-');
         if (selYear !== selectedYear) {
           selectedTimelineMonth = null;
-        }
-      }
-      if (selectedCategorySlice && selectedCategory !== 'ALL') {
-        if (selectedCategorySlice !== selectedCategory) {
-          selectedCategorySlice = null;
         }
       }
 
@@ -1512,7 +1374,6 @@
 
     function updateCharts() {
       renderTimelineChart();
-      renderCategoryChart();
       renderDayOfWeekChart();
     }
 
@@ -1545,7 +1406,7 @@
       const theme = getChartThemeColors();
       const isDark = document.documentElement.classList.contains('dark');
 
-      // Filtered by active macro filters & category slice, but across all months
+      // Filtered by active macro filters, but across all months
       const timelineTransactions = getActiveFilteredTransactions({ ignoreTimelineMonth: true });
 
       // Aggregate purchases and refunds per month
@@ -1737,136 +1598,6 @@
       });
     }
 
-    // Category Distribution Chart
-    function renderCategoryChart() {
-      const ctx = document.getElementById('categoryChart').getContext('2d');
-      const theme = getChartThemeColors();
-      const isDark = document.documentElement.classList.contains('dark');
-
-      // Filtered by active macro filters & timeline month, but across all categories
-      const categoryTransactions = getActiveFilteredTransactions({ ignoreCategorySlice: true });
-
-      const catMap = {};
-      categoryTransactions.forEach(t => {
-        if (!catMap[t.category]) catMap[t.category] = 0;
-        // Net spending by category
-        if (t.isRefund) {
-          catMap[t.category] -= t.amount;
-        } else {
-          catMap[t.category] += t.amount;
-        }
-      });
-
-      // Filter out zero or negative net categories for donut chart display
-      const sortedCats = Object.entries(catMap)
-        .map(([cat, amt]) => [cat, Math.max(0, amt)])
-        .filter(c => c[1] > 0)
-        .sort((a, b) => b[1] - a[1]);
-
-      const labels = sortedCats.map(c => c[0]);
-      const dataValues = sortedCats.map(c => c[1]);
-
-      const colors = [
-        '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#64748b', '#eab308', '#14b8a6'
-      ];
-
-      if (categoryChartInstance) {
-        categoryChartInstance.destroy();
-      }
-
-      const hasCategorySelection = Boolean(selectedCategorySlice && labels.includes(selectedCategorySlice));
-
-      const sliceColors = labels.map((l, i) => {
-        const baseColor = colors[i % colors.length];
-        if (!hasCategorySelection || l === selectedCategorySlice) {
-          return baseColor;
-        }
-        return baseColor + '33'; // Low opacity for unselected slices
-      });
-
-      const borderColors = labels.map(l => {
-        if (hasCategorySelection && l === selectedCategorySlice) {
-          return isDark ? '#fbbf24' : '#d97706';
-        }
-        return isDark ? '#0f172a' : '#ffffff';
-      });
-
-      const offsets = labels.map(l => (hasCategorySelection && l === selectedCategorySlice) ? 14 : 0);
-      const borderWidths = labels.map(l => (hasCategorySelection && l === selectedCategorySlice) ? 4 : 2);
-
-      categoryChartInstance = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-          labels: labels,
-          datasets: [{
-            data: dataValues,
-            backgroundColor: sliceColors,
-            borderColor: borderColors,
-            borderWidth: borderWidths,
-            offset: offsets
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          onClick: (event, elements, chart) => {
-            let clickedIndex = -1;
-            if (elements && elements.length > 0) {
-              clickedIndex = elements[0].index;
-            } else if (chart) {
-              const activeElements = chart.getElementsAtEventForMode(event.native || event, 'nearest', { intersect: true }, true);
-              if (activeElements && activeElements.length > 0) {
-                clickedIndex = activeElements[0].index;
-              }
-            }
-            if (clickedIndex >= 0 && clickedIndex < labels.length) {
-              const clickedCat = labels[clickedIndex];
-              selectedCategorySlice = (selectedCategorySlice === clickedCat) ? null : clickedCat;
-              refreshAllWidgets();
-            }
-          },
-          onHover: (event, elements) => {
-            const target = event.native ? event.native.target : (event.chart ? event.chart.canvas : null);
-            if (target) {
-              target.style.cursor = (elements && elements.length > 0) ? 'pointer' : 'default';
-            }
-          },
-          plugins: {
-            legend: {
-              position: 'bottom',
-              onClick: (e, legendItem) => {
-                if (legendItem && legendItem.index !== undefined && legendItem.index < labels.length) {
-                  const clickedCat = labels[legendItem.index];
-                  selectedCategorySlice = (selectedCategorySlice === clickedCat) ? null : clickedCat;
-                  refreshAllWidgets();
-                }
-              },
-              labels: {
-                color: theme.textColor,
-                boxWidth: 10,
-                font: { size: 10, family: 'Plus Jakarta Sans' }
-              }
-            },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  const total = dataValues.reduce((a, b) => a + b, 0);
-                  const pct = total > 0 ? ((context.parsed / total) * 100).toFixed(1) : '0';
-                  return ` ${context.label}: ${formatMoney(context.parsed)} (${pct}%)`;
-                },
-                afterBody: function(tooltipItems) {
-                  const idx = tooltipItems[0].dataIndex;
-                  const isSelected = selectedCategorySlice === labels[idx];
-                  return isSelected ? [`(Currently selected - Click to clear)`] : [`(Click to filter dashboard)`];
-                }
-              }
-            }
-          },
-          cutout: '68%'
-        }
-      });
-    }
-
     // Day of Week Spending Chart
     function renderDayOfWeekChart() {
       const ctx = document.getElementById('dayOfWeekChart').getContext('2d');
@@ -1950,7 +1681,7 @@
           
           const orderMeta = orderUrl
             ? `<a href="${orderUrl}" target="_blank" rel="noopener noreferrer" class="hover:text-amber-600 dark:hover:text-amber-400 hover:underline inline-flex items-center gap-0.5" title="View order #${escapeHtml(item.orderId)} on Amazon">#${escapeHtml(item.orderId)}</a>`
-            : (item.orderId ? `#${escapeHtml(item.orderId)}` : escapeHtml(item.category));
+            : (item.orderId ? `#${escapeHtml(item.orderId)}` : '');
 
           return `
             <div class="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
@@ -1990,7 +1721,7 @@
           
           const orderMeta = orderUrl
             ? `<a href="${orderUrl}" target="_blank" rel="noopener noreferrer" class="hover:text-amber-600 dark:hover:text-amber-400 hover:underline inline-flex items-center gap-0.5" title="View order #${escapeHtml(item.orderId)} on Amazon">#${escapeHtml(item.orderId)}</a>`
-            : (item.orderId ? `#${escapeHtml(item.orderId)}` : escapeHtml(item.category));
+            : (item.orderId ? `#${escapeHtml(item.orderId)}` : '');
 
           return `
             <div class="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
@@ -2024,7 +1755,6 @@
       const rows = ledgerTransactions.filter(t => {
         if (!search) return true;
         return t.title.toLowerCase().includes(search) ||
-               t.category.toLowerCase().includes(search) ||
                (t.orderId && t.orderId.toLowerCase().includes(search)) ||
                (t.asin && t.asin.toLowerCase().includes(search)) ||
                (t.reason && t.reason.toLowerCase().includes(search)) ||
@@ -2033,7 +1763,6 @@
 
       let filterDetails = [];
       if (selectedTimelineMonth) filterDetails.push(`Month: ${formatMonthKey(selectedTimelineMonth)}`);
-      if (selectedCategorySlice) filterDetails.push(`Category: ${selectedCategorySlice}`);
       const filterDesc = filterDetails.length > 0 ? ` [Filtered by ${filterDetails.join(' & ')}]` : '';
 
       document.getElementById('tableResultsCount').textContent = `Showing ${Math.min(rows.length, 150)} of ${rows.length} matching transactions${filterDesc}`;
@@ -2042,7 +1771,7 @@
         const emptyNotice = filterDetails.length > 0
           ? `No transactions match the selected chart filter (${filterDetails.join(', ')}).`
           : 'No matching transactions found.';
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-slate-400 text-xs">${emptyNotice}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-slate-400 text-xs">${emptyNotice}</td></tr>`;
         return;
       }
 
@@ -2071,11 +1800,6 @@
             <td class="py-3 px-4 text-xs whitespace-nowrap">${typeBadge}</td>
             <td class="py-3 px-4 text-xs whitespace-nowrap">${orderCellContent}</td>
             <td class="py-3 px-4 text-xs">${titleCellContent}</td>
-            <td class="py-3 px-4 text-xs whitespace-nowrap">
-              <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                ${escapeHtml(t.category)}
-              </span>
-            </td>
             <td class="py-3 px-4 text-xs text-right whitespace-nowrap">${amountFormatted}</td>
           </tr>
         `;
@@ -2097,7 +1821,6 @@
         'Type': t.isRefund ? 'Refund' : 'Order',
         'Order ID': t.orderId || '',
         'Title / Item': t.title,
-        'Category': t.category,
         'Amount': t.isRefund ? -t.amount : t.amount,
         'ASIN': t.asin || '',
         'Refund Reason': t.reason || ''
